@@ -3,10 +3,9 @@
 
 Pixy2 pixy;
 
-short speed;
-double dir = 0;
-double target = 0;
-double imu_angle = 0;
+short speed = 0;
+float dir = 0;
+float target  = 0;
 
 bool btn_left = false;
 bool btn_center = false;
@@ -18,18 +17,13 @@ const byte motors_in2[4] = {38, 40, 46, 32};
 
 bool line_state[4];
 
+short ball_id = -1;
+short target_id = -1;
+short home_id = -1;
+
 uint32_t ball_found;
 
-void move() {
-  int u = target * K_YAW;
-
-  set_speed(MOTOR_A,  -speed * cos((dir + 0.785398163397448)) + u);
-  set_speed(MOTOR_B,   speed * cos((dir - 0.785398163397448)) + u);
-  set_speed(MOTOR_C,  -speed * cos((dir + 0.785398163397448)) - u);
-  set_speed(MOTOR_D,  -speed * cos((dir - 0.785398163397448)) + u);
-}
-
-void set_speed(byte port, short motor_speed) {
+void setSpeed(byte port, short motor_speed) {
   if (motor_speed > 255)
     motor_speed = 255;
   else if (motor_speed < -255)
@@ -40,34 +34,111 @@ void set_speed(byte port, short motor_speed) {
   digitalWrite(motors_in2[port], !(motor_speed >= 0));
 }
 
-void set_led(byte port, bool state) {
+void move() {
+  int u = target * K_YAW;
+  setSpeed(MOTOR_A,  -speed * cos((dir + 0.785398163397448)) + u);
+  setSpeed(MOTOR_B,   speed * cos((dir - 0.785398163397448)) + u);
+  setSpeed(MOTOR_C,  -speed * cos((dir + 0.785398163397448)) - u);
+  setSpeed(MOTOR_D,  -speed * cos((dir - 0.785398163397448)) + u);
+}
+
+void setLED(byte port, bool state) {
   digitalWrite(port, state);
 }
 
-void check_light() {
+bool checkLights() {
   /*
-     /------------------------\ /-------------------------\
-     |  side  | port | return | | sensor  | mpl_1 | mpl_2 |
-     |--------|------|--------| |---------|-------|-------|
-     |  None  |  --  |   0    | | Central |   0   |   0   |
-     |  Right |  A0  |   1    | | Lower   |   0   |   1   |
-     |  Back  |  A1  | . 2    | | Left    |   1   |   0   |
-     |  Front |  A2  | . 3    | | Right   |   1   |   1   |
-     |  Left  |  A3  |   4    | \-------------------------/
-     \------------------------/
+     /---------------\ /-------------------------\
+     |  side  | port | | sensor  | mpl_1 | mpl_2 |
+     |--------|------| |---------|-------|-------|
+     |  Right |  A0  | | Central |   0   |   0   |
+     |  Back  |  A1  | | Lower   |   0   |   1   |
+     |  Front |  A2  | | Left    |   1   |   0   |
+     |  Left  |  A3  | | Right   |   1   |   1   |
+     \---------------/ \-------------------------/
   */
 
   for (int i = 0; i < 4; ++i) {
     digitalWrite(MPL_1, i & 1);
     digitalWrite(MPL_2, i >> 1);
-    line_state[0] = (analogRead(A0) > WHITE_LINE);
-    line_state[1] = (analogRead(A1) > WHITE_LINE);
-    line_state[2] = (analogRead(A2) > WHITE_LINE);
-    line_state[3] = (analogRead(A3) > WHITE_LINE);
+    line_state[0] |= (analogRead(A0) > WHITE_LINE);
+    line_state[1] |= (analogRead(A1) > WHITE_LINE);
+    line_state[2] |= (analogRead(A2) > WHITE_LINE);
+    line_state[3] |= (analogRead(A3) > WHITE_LINE);
+  }
+
+  return line_state[0] | line_state[1] | line_state[2] | line_state[3];
+}
+
+void checkButtons() {
+  btn_left = digitalRead(LEFT_BTN);
+  btn_center = digitalRead(CENTER_BTN);
+  btn_right = digitalRead(RIGHT_BTN);
+}
+
+float calcAngle(short block_id) {
+  if (block_id >= 0) {
+    int x = pixy.ccc.blocks[block_id].m_x;
+    int y = pixy.ccc.blocks[block_id].m_y;
+    return (-acos((x - CAM_CENTER_X) / sqrt(pow(y - CAM_CENTER_Y, 2) + pow(x - CAM_CENTER_X, 2))) * (1 - 2 * (y > CAM_CENTER_Y)));
+  }
+  return 0;
+}
+
+float updateIMU() {
+  if (btn_right && btn_left && btn_center) {
+    Serial3.write('c');
+  }
+
+  int buffer_size = Serial3.available();
+  float imu_angle = 0;
+  if (buffer_size) {
+    for (int i = 0; i < buffer_size; ++i) {
+      imu_angle = Serial3.read();
+    }
+    imu_angle = (imu_angle - 120) * PI / 180;
+  }
+  return imu_angle;
+}
+
+void follow_ball() {
+  float home = PI;
+  if (home_id >= 0) {
+    home = calcAngle(home_id);
+  }
+
+  if (ball_id >= 0) {
+    pixy.setLED(0, 255, 0);
+    ball_found = millis();
+    int x = pixy.ccc.blocks[ball_id].m_x;
+    int y = pixy.ccc.blocks[ball_id].m_y;
+
+    dir = calcAngle(ball_id);
+
+    if (abs(dir) < PI / 2) {
+      dir *= 2;
+    } else if (x > 90 && x < 120 && y > 100 && y < 165) {
+      dir = (1 - 2 * (dir >= 0)) * PI / 2;
+    } else {
+      speed = BOOST_SPEED;
+      dir = home;
+    }
+
+    if (x > 180 && x < 200 && y > 115 && y < 145) {
+      speed = BOOST_SPEED;
+      setLED(CENTER_LED, HIGH);
+    } else {
+      setLED(CENTER_LED, LOW);
+    }
+  } else {
+    pixy.setLED(0, 0, 0);
+    if (millis() - ball_found > 1000)
+      dir = home;
+    speed = BOOST_SPEED;
   }
 }
 
-void initHardware() {
+void setup() {
   // setup motors
   pinMode(L_STANDBY, OUTPUT);
   digitalWrite(L_STANDBY, HIGH);
@@ -92,115 +163,46 @@ void initHardware() {
   pinMode(RIGHT_LED, OUTPUT);
   pinMode(CENTER_LED, OUTPUT);
   pinMode(LEFT_LED, OUTPUT);
-}
-
-void follow_ball(int ball_id, int target_id, int home_id) {
-  //  int home = PI;
-  //  if (home_id >= 0) {
-  //    int home_x = pixy.ccc.blocks[home_id].m_x;
-  //    int home_y = pixy.ccc.blocks[home_id].m_y;
-  //    home = -acos((home_x - CAM_CENTER_X) / sqrt(pow((home_y - CAM_CENTER_Y), 2) + pow((home_x - CAM_CENTER_X), 2))) * (1 - 2 * (home_y > CAM_CENTER_Y));
-  //  }
-
-  if (ball_id >= 0) {
-    pixy.setLED(0, 255, 0);
-    ball_found = millis();
-    int x = pixy.ccc.blocks[ball_id].m_x;
-    int y = pixy.ccc.blocks[ball_id].m_y;
-    dir = -acos((x - CAM_CENTER_X) / sqrt(pow(y - CAM_CENTER_Y, 2) + pow(x - CAM_CENTER_X, 2))) * (1 - 2 * (y > CAM_CENTER_Y));
-
-    if (abs(dir) < PI / 6) {
-      dir *= 3;
-    } else if (abs(dir) < PI / 2) {
-      dir *= 2;
-    } else {
-      if (x > 90 && x < 118 && y > 100 && y < 166) {
-        dir = (1 - 2 * (dir >= 0)) * PI / 2;
-      } else {
-        speed = BOOST_SPEED;
-        dir = PI;
-      }
-    }
-
-    if (y > 115 && y < 145) {
-      if (x > 180 && x < 200) {
-        speed = BOOST_SPEED;
-        set_led(CENTER_LED, HIGH);
-      } else {
-        set_led(CENTER_LED, LOW);
-      }
-    }
-  } else {
-    pixy.setLED(0, 0, 0);
-    if (millis() - ball_found > 1000)
-      dir = PI;
-    speed = BOOST_SPEED;
-  }
-}
-
-void setup() {
-  speed = 0;
-  dir = 0;
-  target = 0;
-
-  initHardware();
 
   pixy.init();
-
   Serial.begin(115200);
   Serial3.begin(115200);
-  delay(10000);
-  Serial3.write('c');
+  
+  setLED(LEFT_LED, true);
+  setLED(CENTER_LED, true);
+  setLED(RIGHT_LED, true);
+  delay(9500);
+  for (int i = 0; i < 3; ++i) {
+    setLED(LEFT_LED, (i % 2));
+    setLED(CENTER_LED, (i % 2));
+    setLED(RIGHT_LED, (i % 2));
+    delay(200);
+  }
 
   pixy.setLED(0, 0, 0);
 }
 
-void set_target(int target_id) {
-  if (target_id >= 0) {
-    int target_x = pixy.ccc.blocks[target_id].m_x;
-    int target_y = pixy.ccc.blocks[target_id].m_y;
-    target = -acos((target_x - CAM_CENTER_X) / sqrt(pow((target_y - CAM_CENTER_Y), 2) + pow((target_x - CAM_CENTER_X), 2))) * (1 - 2 * (target_y > CAM_CENTER_Y));
-  }
-}
-
-void check_btn() {
-  btn_left = digitalRead(LEFT_BTN);
-  btn_center = digitalRead(CENTER_BTN);
-  btn_right = digitalRead(RIGHT_BTN);
-}
-
 void loop() {
-  check_btn();
   speed = BASIC_SPEED;
-  if (btn_right) {
-    Serial3.write('c');
-  }
-  int buffer_size = Serial3.available();
-  if (buffer_size) {
-    for (int i = 0; i < buffer_size; ++i)
-      imu_angle = (Serial3.read() - 120) * PI / 180;
-    //Serial.println(imu_angle);
-  }
-  target = imu_angle;
+  checkLights();
+  checkButtons();
+  target = updateIMU();
+
   pixy.ccc.getBlocks();
-  int ball_id = -1;
-  int target_id = -1;
-  int home_id = -1;
   if (pixy.ccc.numBlocks) {
     for (int i = 0; i < pixy.ccc.numBlocks; ++i) {
-      if (pixy.ccc.blocks[i].m_signature == 1 && (ball_id == -1 || pixy.ccc.blocks[i].m_age > pixy.ccc.blocks[ball_id].m_age)) {
+      if (pixy.ccc.blocks[i].m_signature == 1 && (ball_id == -1 || pixy.ccc.blocks[i].m_age > pixy.ccc.blocks[ball_id].m_age))
         ball_id = i;
-      }
-      if (pixy.ccc.blocks[i].m_signature == 3) {
+      if (pixy.ccc.blocks[i].m_signature == ENEMY_GOAL && (target_id == -1 || pixy.ccc.blocks[i].m_height * pixy.ccc.blocks[i].m_width > pixy.ccc.blocks[target_id].m_height * pixy.ccc.blocks[target_id].m_width))
         target_id = i;
-      }
-      if (pixy.ccc.blocks[i].m_signature == 2) {
+      if (pixy.ccc.blocks[i].m_signature == HOME_GOAL && (home_id == -1 || pixy.ccc.blocks[i].m_height * pixy.ccc.blocks[i].m_width > pixy.ccc.blocks[home_id].m_height * pixy.ccc.blocks[home_id].m_width))
         home_id = i;
-      }
     }
   }
-
-      set_target(target_id);
-  follow_ball(ball_id, target_id, home_id);
+  
+  if (target_id >= 0)
+    target = calcAngle(target_id);
+  follow_ball();
+  
   move();
 }

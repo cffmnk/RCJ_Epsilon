@@ -1,6 +1,9 @@
-#define BASIC_SPEED 200// 0 - 360
+#define BASIC_SPEED 200 // 0 - 360
 #define BOOST_SPEED 300 // 0 - 360
 #define K_YAW 150
+
+#define ENEMY_GOAL 3  // 2 - yellow, 3 - blue
+#define HOME_GOAL 2 // 2 - yellow, 3 - blue
 
 #define WHITE_LINE 800
 
@@ -26,34 +29,11 @@
 #define FSIDE 3
 #define LSIDE 4
 
-void initHardware();
-void setSpeed();
+void setSpeed(byte port, short motor_speed);
 void move();
-void set_led();
+void setLED(byte port, bool state);
+bool checkLights();
+void checkButtons();
+float calcAngle(short block_id);
+float updateIMU();
 void follow_ball();
-void set_target(int target_id);
-
-/*
-    if (abs(dir) < PI / 2) {
-      dir *= 2;
-    } else if (x > 90 && x < 118 && y > 100 && y < 166) {
-      dir = (1 - 2 * (dir >= 0)) * PI / 2;
-    } else {
-      speed = BOOST_SPEED;
-      dir = PI;
-    }*/
-/*
-    if (y > 115 && y < 145) {
-      if (x > 180 && x < 200) {
-        speed = BOOST_SPEED;
-        set_led(CENTER_LED, HIGH);
-      } else {
-        set_led(CENTER_LED, LOW);
-      }
-    }
-  } else {
-    pixy.setLED(0, 0, 0);
-    if (millis() - ball_found > 1000)
-      dir = PI;
-    speed = BOOST_SPEED;
-  }*/
