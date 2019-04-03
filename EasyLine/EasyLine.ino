@@ -1,5 +1,5 @@
 #include "config.h"
-#include "Pixy2.h"
+#include <Pixy2.h>
 
 Pixy2 pixy;
 
@@ -16,6 +16,9 @@ const byte motors_in1[4] = {36, 42, 44, 34};
 const byte motors_in2[4] = {38, 40, 46, 32};
 
 bool line_state[4];
+bool line_found = false;
+bool robot_on_line = false;
+uint32_t line_timer;
 
 short ball_id = -1;
 short target_id = -1;
@@ -46,7 +49,7 @@ void setLED(byte port, bool state) {
   digitalWrite(port, state);
 }
 
-bool checkLights() {
+bool checkLine() {
   /*
      /---------------\ /-------------------------\
      |  side  | port | | sensor  | mpl_1 | mpl_2 |
@@ -104,7 +107,7 @@ float updateIMU() {
   return imu_angle;
 }
 
-void follow_ball() {
+void followBall() {
   float home = PI;
   if (home_id >= 0) {
     home = calcAngle(home_id);
@@ -170,7 +173,7 @@ void setup() {
   pixy.init();
   Serial.begin(115200);
   Serial3.begin(115200);
-  
+
   setLED(LEFT_LED, true);
   setLED(CENTER_LED, true);
   setLED(RIGHT_LED, true);
@@ -187,7 +190,7 @@ void setup() {
 
 void loop() {
   speed = BASIC_SPEED;
-  checkLights();
+  line_found = checkLine();
   checkButtons();
   target = updateIMU();
 
@@ -202,10 +205,36 @@ void loop() {
         home_id = i;
     }
   }
-  
   if (target_id >= 0)
     target = calcAngle(target_id);
-    
-  follow_ball();
+
+  if (line_found) {
+    robot_on_line = true;
+    line_timer = millis();
+  } else {
+    if (millis() - line_timer > 1000) {
+      robot_on_line = false;
+    }
+  }
+
+  if (!robot_on_line) {
+    followBall();
+  } else {
+    int block_id = -1;
+    if (home_id >= 0) {
+      block_id = home_id;
+    } else if (target_id >= 0) {
+      block_id = target_id;
+    }
+
+    if (block_id >= 0) {
+      int x = pixy.ccc.blocks[block_id].m_x;
+      int y = pixy.ccc.blocks[block_id].m_y;
+      dir = calcAngle(block_id);
+    } else {
+      speed = 0;
+    }
+  }
+
   move();
 }
