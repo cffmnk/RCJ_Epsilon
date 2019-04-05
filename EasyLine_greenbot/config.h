@@ -1,16 +1,16 @@
-#define BASIC_SPEED 340 // 0 - 360
-#define BOOST_SPEED 340 // 0 - 360
+#define BASIC_SPEED 200 // 0 - 360
+#define BOOST_SPEED 300 // 0 - 360
 #define K_YAW 150
 
 #define ENEMY_GOAL 3  // 2 - yellow, 3 - blue
 #define HOME_GOAL 2 // 2 - yellow, 3 - blue
 
-#define WHITE_LINE 950
-
 #define GYRO_TYPE 2 // 1 - sparkfun, 2 - gy25
 #define GYRO_CALIB_TIME 5000
 
-#define CAM_CENTER_X 153
+#define WHITE_LINE 10000
+
+#define CAM_CENTER_X 160
 #define CAM_CENTER_Y 130
 
 #define MOTOR_A 0 // cw

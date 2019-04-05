@@ -1,5 +1,6 @@
 #include "config.h"
 #include <Pixy2.h>
+#include <Wire.h>
 
 #if GYRO_TYPE == 2
 #include "MPU6050.h"
@@ -31,7 +32,6 @@ short target_id = -1;
 short home_id = -1;
 
 uint32_t ball_found;
-
 uint32_t gyro_timer = 0;
 float timeStep = 0.02;
 
@@ -51,7 +51,7 @@ void move() {
   setSpeed(MOTOR_A,  -speed * cos((dir + 0.785398163397448)) + u);
   setSpeed(MOTOR_B,   speed * cos((dir - 0.785398163397448)) + u);
   setSpeed(MOTOR_C,  -speed * cos((dir + 0.785398163397448)) - u);
-  setSpeed(MOTOR_D,  -speed * cos((dir - 0.785398163397448)) + u);
+  setSpeed(MOTOR_D,  speed * cos((dir - 0.785398163397448)) - u);
 }
 
 void setLED(byte port, bool state) {
@@ -100,15 +100,6 @@ float calcAngle(short block_id) {
   return 0;
 }
 
-float calcDist(short block_id) {
-  if (block_id >= 0) {
-    int x = pixy.ccc.blocks[block_id].m_x;
-    int y = pixy.ccc.blocks[block_id].m_y;
-    return sqrt(pow(x - CAM_CENTER_X, 2) + pow(y - CAM_CENTER_Y, 2));
-  }
-  return 0;
-}
-
 float updateIMU() {
 #if GYRO_TYPE == 1
   if (btn_right && btn_left && btn_center) {
@@ -137,9 +128,6 @@ float updateIMU() {
 
 void followBall() {
   float home = PI;
-  if (home_id >= 0) {
-    home = calcAngle(home_id);
-  }
 
   if (ball_id >= 0) {
     pixy.setLED(0, 255, 0);
@@ -148,17 +136,14 @@ void followBall() {
     int y = pixy.ccc.blocks[ball_id].m_y;
 
     dir = calcAngle(ball_id);
-    float dist = calcDist(ball_id);
-    //Serial.println(dist);
-    if (dist < 65) {
-      if (abs(dir) < PI / 2) {
-        dir *= 2;
-      } else if (x > 100 && x < 120 && y > 100 && y < 165) {
-        dir = (1 - 2 * (dir >= 0)) * PI / 2;
-      } else {
-        speed = BOOST_SPEED;
-        dir = home;
-      }
+
+    if (abs(dir) < PI / 2) {
+      dir *= 2;
+    } else if (x > 90 && x < 120 && y > 100 && y < 165) {
+      dir = (1 - 2 * (dir >= 0)) * PI / 2;
+    } else {
+      speed = BOOST_SPEED;
+      dir = home;
     }
 
     if (x > 180 && x < 200 && y > 115 && y < 145) {
@@ -169,10 +154,9 @@ void followBall() {
     }
   } else {
     pixy.setLED(0, 0, 0);
-    if (millis() - ball_found > 1000) {
+    if (millis() - ball_found > 1000)
       dir = home;
-      speed = BOOST_SPEED;
-    }
+    speed = BOOST_SPEED;
   }
 }
 
@@ -206,7 +190,6 @@ void setup() {
   Serial.begin(115200);
   Serial3.begin(115200);
 
-
   //setup GYRO
   mpu.begin(MPU6050_SCALE_2000DPS, MPU6050_RANGE_2G);
   // Calibrate gyroscope. The calibration must be at rest.
@@ -215,6 +198,7 @@ void setup() {
   // Set threshold sensivty. Default 3.
   // If you don't want use threshold, comment this line or set 0.
   mpu.setThreshold(1);
+
   setLED(LEFT_LED, true);
   setLED(CENTER_LED, true);
   setLED(RIGHT_LED, true);
@@ -234,36 +218,33 @@ void loop() {
   line_found = checkLine();
   checkButtons();
   target = updateIMU();
-  ball_id = -1;
-  target_id = -1;
-  home_id = -1;
   pixy.ccc.getBlocks();
   if (pixy.ccc.numBlocks) {
     for (int i = 0; i < pixy.ccc.numBlocks; ++i) {
       if (pixy.ccc.blocks[i].m_signature == 1 && (ball_id == -1 || pixy.ccc.blocks[i].m_age > pixy.ccc.blocks[ball_id].m_age))
         ball_id = i;
-      if (pixy.ccc.blocks[i].m_signature == ENEMY_GOAL)
-        target_id = i;
-      if (pixy.ccc.blocks[i].m_signature == HOME_GOAL)
-        home_id = i;
+      //if (pixy.ccc.blocks[i].m_signature == ENEMY_GOAL && (target_id == -1 || pixy.ccc.blocks[i].m_height * pixy.ccc.blocks[i].m_width > pixy.ccc.blocks[target_id].m_height * pixy.ccc.blocks[target_id].m_width))
+      //  target_id = i;
+      //if (pixy.ccc.blocks[i].m_signature == HOME_GOAL && (home_id == -1 || pixy.ccc.blocks[i].m_height * pixy.ccc.blocks[i].m_width > pixy.ccc.blocks[home_id].m_height * pixy.ccc.blocks[home_id].m_width))
+      // home_id = i;
     }
   }
-  if (target_id >= 0)
+  /*(if (target_id >= 0)
     target = calcAngle(target_id);
 
-  if (line_found) {
+    if (line_found) {
     robot_on_line = true;
     line_timer = millis();
-  } else {
-    if (millis() - line_timer > 60) {
+    } else {
+    if (millis() - line_timer > 100) {
       robot_on_line = false;
     }
-  }
+    }
 
-  if (!robot_on_line) {
+    if (!robot_on_line) {
     followBall();
     setLED(LEFT_LED, LOW);
-  } else {
+    } else {
     setLED(LEFT_LED, HIGH);
     int block_id = -1;
     if (home_id >= 0) {
@@ -279,7 +260,8 @@ void loop() {
     } else {
       speed = 0;
     }
-  }
+    }*/
+  followBall();
   move();
   delay((timeStep * 1000) - (millis() - gyro_timer));
 }
