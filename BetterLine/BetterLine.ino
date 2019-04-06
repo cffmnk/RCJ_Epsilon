@@ -89,7 +89,6 @@ bool checkLine() {
     line_state[2] |= (analogRead(A2) > WHITE_LINE);
     line_state[3] |= (analogRead(A3) > WHITE_LINE);
   }
-
   return line_state[0] | line_state[1] | line_state[2] | line_state[3];
 }
 
@@ -135,8 +134,14 @@ float updateIMU() {
   return imu_angle;
 #endif
 #if GYRO_TYPE == 2
-  if (btn_right && btn_left)
+  if (btn_right && btn_left) {
     yaw = 0;
+    setLED(LEFT_LED, HIGH);
+    setLED(RIGHT_LED, HIGH);
+  } else {
+    setLED(LEFT_LED, LOW);
+    setLED(RIGHT_LED, LOW);
+  }
   gyro_timer = millis();
   VectorMPU norm = mpu.readNormalizeGyro();
   yaw = yaw + DEG_TO_RAD(norm.ZAxis * timeStep);
@@ -168,7 +173,7 @@ void followBall() {
       }
     }
 
-    if (y > 100 && y < 165 && x < CAM_CENTER_X && dir < 80) {
+    if (y > 100 && y < 165 && x < CAM_CENTER_X && dist < 80) {
       dir = (1 - 2 * (dir >= 0)) * PI / 2;
     }
 
@@ -180,7 +185,7 @@ void followBall() {
     }
   } else {
     pixy.setLED(0, 0, 0);
-    if (millis() - ball_found > 1000) {
+    if (millis() - ball_found > 400) {
       dir = home;
       speed = BOOST_SPEED;
     }
@@ -207,22 +212,25 @@ void startMenu() {
   }
   setLED(CENTER_LED, HIGH);
   delay(1000);
-  setLED(CENTER_LED, LOW);
   checkButtons();
+  while (!btn_center) checkButtons();
   while (btn_center) checkButtons();
+  setLED(CENTER_LED, LOW);
   timer = millis();
+  arcStart();
 }
 
 void arcStart() {
-  while (millis() - timer < 1500) {
-    updateIMU();
-    dir = 0;
+  while (millis() - timer < 500) {
+    target = updateIMU();
     if (arc_start == 2) {
-      target = yaw - PI / 3;
+      dir = PI / 6;
     }
     if (arc_start == 3) {
-      target = yaw + PI / 3;
+      dir = -PI / 6;
     }
+    speed = 360;
+    move();
   }
 }
 
@@ -261,7 +269,7 @@ void setup() {
   mpu.begin(MPU6050_SCALE_2000DPS, MPU6050_RANGE_2G);
   // Calibrate gyroscope. The calibration must be at rest.
   // If you don't want calibrate, comment this line.
-  mpu.calibrateGyro(100);
+  mpu.calibrateGyro();
   // Set threshold sensivty. Default 3.
   // If you don't want use threshold, comment this line or set 0.
   mpu.setThreshold(3);
@@ -336,5 +344,7 @@ void loop() {
     }
   }
   move();
+  if (btn_left && btn_right && btn_center)
+    startMenu();
   delay((timeStep * 1000) - (millis() - gyro_timer));
 }

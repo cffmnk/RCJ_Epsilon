@@ -214,7 +214,7 @@ void setup() {
   mpu.calibrateGyro();
   // Set threshold sensivty. Default 3.
   // If you don't want use threshold, comment this line or set 0.
-  mpu.setThreshold(1);
+  mpu.setThreshold(3);
 #endif
   setLED(LEFT_LED, true);
   setLED(CENTER_LED, true);
@@ -278,7 +278,9 @@ void loop() {
       int y = pixy.ccc.blocks[block_id].m_y;
       dir = calcAngle(block_id);
     } else {
-      speed = 0;
+      speed = 200;
+      dir = PI;
+      target = yaw;
     }
   }
   move();
