@@ -35,6 +35,14 @@ uint32_t ball_found;
 uint32_t gyro_timer = 0;
 float timeStep = 0.02;
 
+uint32_t timer = 0;
+byte arc_start = 0;
+
+template <typename T>
+T sign(T value) {
+  return T((value > 0) - (value < 0));
+}
+
 void setSpeed(byte port, short motor_speed) {
   if (motor_speed > 255)
     motor_speed = 255;
@@ -123,10 +131,11 @@ float updateIMU() {
     }
     imu_angle = (imu_angle - 120) * PI / 180;
   }
+  Serial.println(imu_angle);
   return imu_angle;
 #endif
 #if GYRO_TYPE == 2
-  if (btn_right && btn_left && btn_center)
+  if (btn_right && btn_left)
     yaw = 0;
   gyro_timer = millis();
   VectorMPU norm = mpu.readNormalizeGyro();
@@ -153,12 +162,14 @@ void followBall() {
     if (dist < 65) {
       if (abs(dir) < PI / 2) {
         dir *= 2;
-      } else if (x > 100 && x < 120 && y > 100 && y < 165) {
-        dir = (1 - 2 * (dir >= 0)) * PI / 2;
       } else {
         speed = BOOST_SPEED;
         dir = home;
       }
+    }
+
+    if (y > 100 && y < 165 && x < CAM_CENTER_X && dir < 80) {
+      dir = (1 - 2 * (dir >= 0)) * PI / 2;
     }
 
     if (x > 180 && x < 200 && y > 115 && y < 145) {
@@ -172,6 +183,45 @@ void followBall() {
     if (millis() - ball_found > 1000) {
       dir = home;
       speed = BOOST_SPEED;
+    }
+  }
+}
+
+void startMenu() {
+  while (42) {
+    checkButtons();
+    if (btn_left) {
+      arc_start = 3;
+      break;
+    }
+
+    if (btn_right) {
+      arc_start = 2;
+      break;
+    }
+
+    if (btn_center) {
+      arc_start = 1;
+      break;
+    }
+  }
+  setLED(CENTER_LED, HIGH);
+  delay(1000);
+  setLED(CENTER_LED, LOW);
+  checkButtons();
+  while (btn_center) checkButtons();
+  timer = millis();
+}
+
+void arcStart() {
+  while (millis() - timer < 1500) {
+    updateIMU();
+    dir = 0;
+    if (arc_start == 2) {
+      target = yaw - PI / 3;
+    }
+    if (arc_start == 3) {
+      target = yaw + PI / 3;
     }
   }
 }
@@ -211,10 +261,10 @@ void setup() {
   mpu.begin(MPU6050_SCALE_2000DPS, MPU6050_RANGE_2G);
   // Calibrate gyroscope. The calibration must be at rest.
   // If you don't want calibrate, comment this line.
-  mpu.calibrateGyro();
+  mpu.calibrateGyro(100);
   // Set threshold sensivty. Default 3.
   // If you don't want use threshold, comment this line or set 0.
-  mpu.setThreshold(1);
+  mpu.setThreshold(3);
 #endif
   setLED(LEFT_LED, true);
   setLED(CENTER_LED, true);
@@ -228,6 +278,8 @@ void setup() {
   }
 
   pixy.setLED(0, 0, 0);
+
+  startMenu();
 }
 
 void loop() {
@@ -278,7 +330,9 @@ void loop() {
       int y = pixy.ccc.blocks[block_id].m_y;
       dir = calcAngle(block_id);
     } else {
-      speed = 0;
+      target = yaw;
+      dir = PI;
+      speed = 200;
     }
   }
   move();

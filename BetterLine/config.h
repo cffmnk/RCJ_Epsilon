@@ -4,10 +4,9 @@
 
 #define BASIC_SPEED 340 // 0 - 360
 #define BOOST_SPEED 340 // 0 - 360
-#define K_YAW 150
+#define K_YAW 240 // heading coefficient
 
 #define ENEMY_GOAL 3  // 2 - yellow, 3 - blue
-#define HOME_GOAL 2 // 2 - yellow, 3 - blue
 
 #define WHITE_LINE 950
 
@@ -44,9 +43,19 @@
 #define GYRO_CALIB_TIME 9000
 #endif
 #if GYRO_TYPE == 2
-#define GYRO_CALIB_TIME 5000
+#define GYRO_CALIB_TIME 9000
 #endif
 
+#if ENEMY_GOAL == 3
+  #define HOME_GOAL 2 // 2 - yellow, 3 - blue
+#endif
+#if ENEMY_GOAL == 2
+  #define HOME_GOAL 3 // 2 - yellow, 3 - blue
+#endif
+
+template <typename T>
+T sign(T value);
+void startMenu();
 void setSpeed(byte port, short motor_speed);
 void move();
 void setLED(byte port, bool state);
