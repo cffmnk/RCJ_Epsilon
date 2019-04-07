@@ -6,7 +6,7 @@
 #define BOOST_SPEED 340 // 0 - 360
 #define K_YAW 240 // heading coefficient
 
-#define ENEMY_GOAL 3  // 2 - yellow, 3 - blue
+#define ENEMY_GOAL 2  // 2 - yellow, 3 - blue
 
 #define WHITE_LINE 950
 

@@ -89,6 +89,7 @@ bool checkLine() {
     line_state[2] |= (analogRead(A2) > WHITE_LINE);
     line_state[3] |= (analogRead(A3) > WHITE_LINE);
   }
+  Serial.println(analogRead(A0));
   return line_state[0] | line_state[1] | line_state[2] | line_state[3];
 }
 
