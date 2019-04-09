@@ -38,20 +38,19 @@
 #define FSIDE 3
 #define LSIDE 4
 
-#define DEG_TO_RAD(x) ( (x) * 2.0 * PI / 360.0 )
 #if GYRO_TYPE == 1
 #define GYRO_CALIB_TIME 9000
-#endif
+#endif // GYRO_TYPE == 1
 #if GYRO_TYPE == 2
 #define GYRO_CALIB_TIME 9000
-#endif
+#endif // GYRO_TYPE == 2
 
 #if ENEMY_GOAL == 3
   #define HOME_GOAL 2 // 2 - yellow, 3 - blue
-#endif
+#endif // ENEMY_GOAL == 3
 #if ENEMY_GOAL == 2
   #define HOME_GOAL 3 // 2 - yellow, 3 - blue
-#endif
+#endif // ENEMY_GOAL == 2
 
 template <typename T>
 T sign(T value);
@@ -62,5 +61,5 @@ void setLED(byte port, bool state);
 bool checkLights();
 void checkButtons();
 float calcAngle(short block_id);
-float updateIMU();
+void updateIMU();
 void followBall();

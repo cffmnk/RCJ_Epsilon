@@ -4,7 +4,7 @@
 #if GYRO_TYPE == 2
 #include "MPU6050.h"
 MPU6050 mpu;
-#endif
+#endif // GYRO_TYPE == 2
 
 Pixy2 pixy;
 
@@ -35,6 +35,7 @@ uint32_t ball_found;
 uint32_t gyro_timer = 0;
 float timeStep = 0.02;
 
+uint32_t cam_timer = 0;
 uint32_t timer = 0;
 byte arc_start = 0;
 
@@ -89,7 +90,7 @@ bool checkLine() {
     line_state[2] |= (analogRead(A2) > WHITE_LINE);
     line_state[3] |= (analogRead(A3) > WHITE_LINE);
   }
-  Serial.println(analogRead(A0));
+  // Serial.println(analogRead(A0));
   return line_state[0] | line_state[1] | line_state[2] | line_state[3];
 }
 
@@ -117,7 +118,7 @@ float calcDist(short block_id) {
   return 0;
 }
 
-float updateIMU() {
+void updateIMU() {
 #if GYRO_TYPE == 1
   if (btn_right && btn_left && btn_center) {
     Serial3.write('c');
@@ -132,22 +133,23 @@ float updateIMU() {
     imu_angle = (imu_angle - 120) * PI / 180;
   }
   Serial.println(imu_angle);
-  return imu_angle;
-#endif
+  yaw = imu_angle;
+#endif // GYRO_TYPE == 1
 #if GYRO_TYPE == 2
-  if (btn_right && btn_left) {
-    yaw = 0;
-    setLED(LEFT_LED, HIGH);
-    setLED(RIGHT_LED, HIGH);
-  } else {
-    setLED(LEFT_LED, LOW);
-    setLED(RIGHT_LED, LOW);
+  if  ((timeStep * 1000) - (millis() - gyro_timer) <= 0) {
+    if (btn_right && btn_left) {
+      yaw = 0;
+      setLED(LEFT_LED, HIGH);
+      setLED(RIGHT_LED, HIGH);
+    } else {
+      setLED(LEFT_LED, LOW);
+      setLED(RIGHT_LED, LOW);
+    }
+    VectorMPU norm = mpu.readNormalizeGyro();
+    yaw = yaw + DEG_TO_RAD * (norm.ZAxis * timeStep);
+    gyro_timer = millis();
   }
-  gyro_timer = millis();
-  VectorMPU norm = mpu.readNormalizeGyro();
-  yaw = yaw + DEG_TO_RAD(norm.ZAxis * timeStep);
-  return yaw;
-#endif
+#endif // GYRO_TYPE == 2
 }
 
 void followBall() {
@@ -191,9 +193,16 @@ void followBall() {
       speed = BOOST_SPEED;
     }
   }
+
+  if (home_id >= 0 && calcAngle(home_id) < 80 && abs(dir) > abs(yaw) + 1.7) {
+    target = yaw;
+    speed = 0;
+  }
 }
 
 void startMenu() {
+  while (!btn_right && !btn_left && !btn_center) checkButtons();
+  
   while (42) {
     checkButtons();
     if (btn_left) {
@@ -222,8 +231,9 @@ void startMenu() {
 }
 
 void arcStart() {
-  while (millis() - timer < 500) {
-    target = updateIMU();
+  while (millis() - timer < 400) {
+    updateIMU();
+    target = yaw;
     if (arc_start == 2) {
       dir = PI / 6;
     }
@@ -274,7 +284,7 @@ void setup() {
   // Set threshold sensivty. Default 3.
   // If you don't want use threshold, comment this line or set 0.
   mpu.setThreshold(3);
-#endif
+#endif // GYRO_TYPE == 2
   setLED(LEFT_LED, true);
   setLED(CENTER_LED, true);
   setLED(RIGHT_LED, true);
@@ -295,21 +305,26 @@ void loop() {
   speed = BASIC_SPEED;
   line_found = checkLine();
   checkButtons();
-  target = updateIMU();
-  ball_id = -1;
-  target_id = -1;
-  home_id = -1;
-  pixy.ccc.getBlocks();
-  if (pixy.ccc.numBlocks) {
-    for (int i = 0; i < pixy.ccc.numBlocks; ++i) {
-      if (pixy.ccc.blocks[i].m_signature == 1 && (ball_id == -1 || pixy.ccc.blocks[i].m_age > pixy.ccc.blocks[ball_id].m_age))
-        ball_id = i;
-      if (pixy.ccc.blocks[i].m_signature == ENEMY_GOAL)
-        target_id = i;
-      if (pixy.ccc.blocks[i].m_signature == HOME_GOAL)
-        home_id = i;
+  updateIMU();
+  target = yaw;
+
+  if (millis() - cam_timer > 15) {
+    ball_id = -1;
+    target_id = -1;
+    home_id = -1;
+    pixy.ccc.getBlocks();
+    if (pixy.ccc.numBlocks) {
+      for (int i = 0; i < pixy.ccc.numBlocks; ++i) {
+        if (pixy.ccc.blocks[i].m_signature == 1 && (ball_id == -1 || pixy.ccc.blocks[i].m_age > pixy.ccc.blocks[ball_id].m_age))
+          ball_id = i;
+        if (pixy.ccc.blocks[i].m_signature == ENEMY_GOAL)
+          target_id = i;
+        if (pixy.ccc.blocks[i].m_signature == HOME_GOAL)
+          home_id = i;
+      }
     }
   }
+
   if (target_id >= 0)
     target = calcAngle(target_id);
 
@@ -334,18 +349,16 @@ void loop() {
       block_id = target_id;
     }
 
-    if (block_id >= 0) {
+    if (block_id >= 0 && calcAngle(block_id) > 70) {
       int x = pixy.ccc.blocks[block_id].m_x;
       int y = pixy.ccc.blocks[block_id].m_y;
       dir = calcAngle(block_id);
     } else {
       target = yaw;
-      dir = PI;
-      speed = 200;
+      speed = 0;
     }
   }
   move();
   if (btn_left && btn_right && btn_center)
     startMenu();
-  delay((timeStep * 1000) - (millis() - gyro_timer));
 }
