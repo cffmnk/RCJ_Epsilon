@@ -189,8 +189,7 @@ void loop() {
   speed = BASIC_SPEED;
   checkLights();
   checkButtons();
-  target = updateIMU();
-
+  target = 0;
   pixy.ccc.getBlocks();
   if (pixy.ccc.numBlocks) {
     for (int i = 0; i < pixy.ccc.numBlocks; ++i) {

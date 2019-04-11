@@ -29,6 +29,14 @@ uint32_t line_timer;
 short ball_id = -1;
 short target_id = -1;
 short home_id = -1;
+float ball_dist = 1000;
+float home_dist = 1000;
+float target_dist = 1000;
+float ball_dir = 0;
+float home_dir = 0;
+float target_dir = 0;
+
+bool turn_on_yaw = false;
 
 uint32_t ball_found;
 
@@ -57,6 +65,8 @@ void setSpeed(byte port, short motor_speed) {
 
 void move() {
   int u = target * K_YAW;
+  if (target > PI / 2)
+    speed = 0;
   setSpeed(MOTOR_A,  -speed * cos((dir + 0.785398163397448)) + u);
   setSpeed(MOTOR_B,   speed * cos((dir - 0.785398163397448)) + u);
   setSpeed(MOTOR_C,  -speed * cos((dir + 0.785398163397448)) - u);
@@ -136,7 +146,7 @@ void updateIMU() {
   yaw = imu_angle;
 #endif // GYRO_TYPE == 1
 #if GYRO_TYPE == 2
-  if  ((timeStep * 1000) - (millis() - gyro_timer) <= 0) {
+  if  (millis() - gyro_timer >= timeStep * 1000) {
     if (btn_right && btn_left) {
       yaw = 0;
       setLED(LEFT_LED, HIGH);
@@ -165,9 +175,8 @@ void followBall() {
     int y = pixy.ccc.blocks[ball_id].m_y;
 
     dir = calcAngle(ball_id);
-    float dist = calcDist(ball_id);
     //Serial.println(dist);
-    if (dist < 65) {
+    if (ball_dist < 75) {
       if (abs(dir) < PI / 2) {
         dir *= 2;
       } else {
@@ -176,7 +185,7 @@ void followBall() {
       }
     }
 
-    if (y > 100 && y < 165 && x < CAM_CENTER_X && dist < 80) {
+    if (y > 100 && y < 165 && x < CAM_CENTER_X && ball_dist < 80) {
       dir = (1 - 2 * (dir >= 0)) * PI / 2;
     }
 
@@ -193,25 +202,23 @@ void followBall() {
       speed = BOOST_SPEED;
     }
   }
-
-  if (home_id >= 0 && calcAngle(home_id) < 80 && abs(dir) > abs(yaw) + 1.7) {
-    target = yaw;
-    speed = 0;
-  }
 }
 
 void startMenu() {
+  target = 0;
+  speed = 0;
+  move();
   while (!btn_right && !btn_left && !btn_center) checkButtons();
-  
+
   while (42) {
     checkButtons();
     if (btn_left) {
-      arc_start = 3;
+      arc_start = 2;
       break;
     }
 
     if (btn_right) {
-      arc_start = 2;
+      arc_start = 3;
       break;
     }
 
@@ -298,36 +305,40 @@ void setup() {
 
   pixy.setLED(0, 0, 0);
 
-  startMenu();
+  // startMenu();
 }
 
 void loop() {
   speed = BASIC_SPEED;
   line_found = checkLine();
   checkButtons();
-  updateIMU();
-  target = yaw;
+  //updateIMU();
+  target = 0;
 
-  if (millis() - cam_timer > 15) {
-    ball_id = -1;
-    target_id = -1;
-    home_id = -1;
-    pixy.ccc.getBlocks();
-    if (pixy.ccc.numBlocks) {
-      for (int i = 0; i < pixy.ccc.numBlocks; ++i) {
-        if (pixy.ccc.blocks[i].m_signature == 1 && (ball_id == -1 || pixy.ccc.blocks[i].m_age > pixy.ccc.blocks[ball_id].m_age))
-          ball_id = i;
-        if (pixy.ccc.blocks[i].m_signature == ENEMY_GOAL)
-          target_id = i;
-        if (pixy.ccc.blocks[i].m_signature == HOME_GOAL)
-          home_id = i;
+  ball_id = -1;
+  target_id = -1;
+  home_id = -1;
+  pixy.ccc.getBlocks();
+  if (pixy.ccc.numBlocks) {
+    for (int i = 0; i < pixy.ccc.numBlocks; ++i) {
+      if (pixy.ccc.blocks[i].m_signature == 1 && (ball_id == -1 || pixy.ccc.blocks[i].m_age > pixy.ccc.blocks[ball_id].m_age)) {
+        ball_id = i;
+        ball_dist = calcDist(ball_id);
+        ball_dir = calcAngle(ball_id);
+      }
+      if (pixy.ccc.blocks[i].m_signature == ENEMY_GOAL) {
+        target_id = i;
+        target_dist = calcDist(target_id);
+        target_dir = calcAngle(target_id);
+        target = target_dir;
+      }
+      if (pixy.ccc.blocks[i].m_signature == HOME_GOAL && (home_id == -1 || pixy.ccc.blocks[i].m_height * pixy.ccc.blocks[i].m_width > pixy.ccc.blocks[home_id].m_height * pixy.ccc.blocks[i].m_width)) {
+        home_id = i;
+        home_dist = calcDist(home_id);
+        home_dir = calcAngle(home_id);
       }
     }
   }
-
-  if (target_id >= 0)
-    target = calcAngle(target_id);
-
   if (line_found) {
     robot_on_line = true;
     line_timer = millis();
@@ -341,24 +352,33 @@ void loop() {
     followBall();
     setLED(LEFT_LED, LOW);
   } else {
+    target = yaw;
     setLED(LEFT_LED, HIGH);
     int block_id = -1;
     if (home_id >= 0) {
       block_id = home_id;
-    } else if (target_id >= 0) {
+    } else if (target_id >= 0 && calcDist(target_id) > 80) {
       block_id = target_id;
     }
 
-    if (block_id >= 0 && calcAngle(block_id) > 70) {
+    if (block_id >= 0) {
       int x = pixy.ccc.blocks[block_id].m_x;
       int y = pixy.ccc.blocks[block_id].m_y;
       dir = calcAngle(block_id);
     } else {
-      target = yaw;
-      speed = 0;
+      speed = 100;
+      dir = PI / 2;
     }
   }
+  if (home_id >= 0 && home_dist < 80 && abs(dir) > abs(yaw) + 1.7) {
+    speed = 0;
+    target = yaw;
+    pixy.setLED(255, 255, 255);  
+  }
+
+  setLED(RIGHT_LED, (target == yaw));
+  
   move();
-  if (btn_left && btn_right && btn_center)
-    startMenu();
+  //    if (btn_left && btn_right && btn_center)
+  //      startMenu();
 }
