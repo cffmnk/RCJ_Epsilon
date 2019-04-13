@@ -76,6 +76,7 @@ bool line_state[4];
 bool line_found = false;
 bool robot_on_line = false;
 uint32_t line_timer;
+short line_return = 1;
 
 short ball_id = -1;
 short target_id = -1;
@@ -201,63 +202,63 @@ void updateIMU() {
     }
     yaw = (constrainAngle(imu_angle - yaw_offset));
     Serial.println(yaw);
-  } 
+  }
 #endif // GYRO_TYPE == 1
-  //#if GYRO_TYPE == 2
-  //  if (!dmpReady) {
-  //    yaw = 0;
-  //  } else {
-  //    while (!mpuInterrupt && fifoCount < packetSize) {
-  //      if (mpuInterrupt && fifoCount < packetSize) {
-  //        // try to get out of the infinite loop
-  //        fifoCount = mpu.getFIFOCount();
-  //      }
-  //      // other program behavior stuff here
-  //      // .
-  //      // .
-  //      // .
-  //      // if you are really paranoid you can frequently test in between other
-  //      // stuff to see if mpuInterrupt is true, and if so, "break;" from the
-  //      // while() loop to immediately process the MPU data
-  //      // .
-  //      // .
-  //      // .
-  //    }
-  //    // reset interrupt flag and get INT_STATUS byte
-  //    mpuInterrupt = false;
-  //    mpuIntStatus = mpu.getIntStatus();
-  //    // get current FIFO count
-  //    fifoCount = mpu.getFIFOCount();
-  //
-  //    // check for overflow (this should never happen unless our code is too inefficient)
-  //    if ((mpuIntStatus & _BV(MPU6050_INTERRUPT_FIFO_OFLOW_BIT)) || fifoCount >= 1024) {
-  //      // reset so we can continue cleanly
-  //      mpu.resetFIFO();
-  //      fifoCount = mpu.getFIFOCount();
-  //
-  //      // otherwise, check for DMP data ready interrupt (this should happen frequently)
-  //    } else if (mpuIntStatus & _BV(MPU6050_INTERRUPT_DMP_INT_BIT)) {
-  //      // wait for correct available data length, should be a VERY short wait
-  //      while (fifoCount < packetSize) fifoCount = mpu.getFIFOCount();
-  //
-  //      // read a packet from FIFO
-  //      mpu.getFIFOBytes(fifoBuffer, packetSize);
-  //
-  //      // track FIFO count here in case there is > 1 packet available
-  //      // (this lets us immediately read more without waiting for an interrupt)
-  //      fifoCount -= packetSize;
-  //
-  //      mpu.dmpGetQuaternion(&q, fifoBuffer);
-  //      mpu.dmpGetGravity(&gravity, &q);
-  //      mpu.dmpGetYawPitchRoll(ypr, &q, &gravity);
-  //
-  //      if (btn_left && btn_right) {
-  //        yaw_offset = ypr[0];
-  //      }
-  //      yaw = -(constrainAngle(ypr[0] - yaw_offset));
-  //    }
-  //  }
-  //#endif // GYRO_TYPE == 2
+#if GYRO_TYPE == 2
+  if (!dmpReady) {
+    yaw = 0;
+  } else {
+    while (!mpuInterrupt && fifoCount < packetSize) {
+      if (mpuInterrupt && fifoCount < packetSize) {
+        // try to get out of the infinite loop
+        fifoCount = mpu.getFIFOCount();
+      }
+      // other program behavior stuff here
+      // .
+      // .
+      // .
+      // if you are really paranoid you can frequently test in between other
+      // stuff to see if mpuInterrupt is true, and if so, "break;" from the
+      // while() loop to immediately process the MPU data
+      // .
+      // .
+      // .
+    }
+    // reset interrupt flag and get INT_STATUS byte
+    mpuInterrupt = false;
+    mpuIntStatus = mpu.getIntStatus();
+    // get current FIFO count
+    fifoCount = mpu.getFIFOCount();
+
+    // check for overflow (this should never happen unless our code is too inefficient)
+    if ((mpuIntStatus & _BV(MPU6050_INTERRUPT_FIFO_OFLOW_BIT)) || fifoCount >= 1024) {
+      // reset so we can continue cleanly
+      mpu.resetFIFO();
+      fifoCount = mpu.getFIFOCount();
+
+      // otherwise, check for DMP data ready interrupt (this should happen frequently)
+    } else if (mpuIntStatus & _BV(MPU6050_INTERRUPT_DMP_INT_BIT)) {
+      // wait for correct available data length, should be a VERY short wait
+      while (fifoCount < packetSize) fifoCount = mpu.getFIFOCount();
+
+      // read a packet from FIFO
+      mpu.getFIFOBytes(fifoBuffer, packetSize);
+
+      // track FIFO count here in case there is > 1 packet available
+      // (this lets us immediately read more without waiting for an interrupt)
+      fifoCount -= packetSize;
+
+      mpu.dmpGetQuaternion(&q, fifoBuffer);
+      mpu.dmpGetGravity(&gravity, &q);
+      mpu.dmpGetYawPitchRoll(ypr, &q, &gravity);
+
+      if (btn_left && btn_right) {
+        yaw_offset = ypr[0];
+      }
+      yaw = -(constrainAngle(ypr[0] - yaw_offset));
+    }
+  }
+#endif // GYRO_TYPE == 2
 }
 
 void followBall() {
@@ -272,19 +273,27 @@ void followBall() {
     int x = pixy.ccc.blocks[ball_id].m_x;
     int y = pixy.ccc.blocks[ball_id].m_y;
 
+    float ang = constrainAngle(ball_dir - yaw);
+
     dir = calcAngle(ball_id);
     //Serial.println(dist);
     if (ball_dist < 75) {
       if (abs(dir) < PI / 2) {
-        dir *= 2;
+        if (ball_dist < 50 && abs(dir) < PI / 4)
+          dir *= 4;
+        else
+          dir *= 2;
       } else {
         speed = BOOST_SPEED;
         dir = home;
       }
     }
 
-    if (y > 100 && y < 165 && x < CAM_CENTER_X && ball_dist < 80) {
-      dir = (1 - 2 * (dir >= 0)) * PI / 2;
+    if (abs(ang) > 2.6 && ball_dist < 55) {
+      dir = ang + PI / 2;
+      setLED(CENTER_LED, HIGH);
+    } else {
+      setLED(CENTER_LED, LOW);
     }
 
     if (x > 180 && x < 200 && y > 115 && y < 145) {
@@ -295,7 +304,7 @@ void followBall() {
     }
   } else {
     pixy.setLED(0, 0, 0);
-    if (millis() - ball_found > 600) {
+    if (millis() - ball_found > 500) {
       dir = home;
       speed = BOOST_SPEED;
     }
@@ -425,8 +434,7 @@ void loop() {
   line_found = checkLine();
   checkButtons();
   updateIMU();
-  target = 0;
-  yaw = 0;
+  target = yaw;
 
   ball_id = -1;
   target_id = -1;
@@ -456,8 +464,9 @@ void loop() {
     robot_on_line = true;
     line_timer = millis();
   } else {
-    if (millis() - line_timer > 60) {
+    if (millis() - line_timer > line_return) {
       robot_on_line = false;
+      line_return = 1;
     }
   }
 
@@ -469,7 +478,7 @@ void loop() {
     int block_id = -1;
     if (home_id >= 0) {
       block_id = home_id;
-    } else if (target_id >= 0 && calcDist(target_id) > 80) {
+    } else if (target_id >= 0 && calcDist(target_id) > 83 ) {
       block_id = target_id;
     }
 
@@ -478,17 +487,19 @@ void loop() {
       int y = pixy.ccc.blocks[block_id].m_y;
       dir = calcAngle(block_id);
     } else {
-      speed = 100;
-      dir = PI / 2;
+      speed = 50;
+      target = yaw;
+      line_return = 300;
+      dir = PI;
     }
   }
-  if (home_id >= 0 && home_dist < 80 && (abs(dir) > abs(yaw) + 1.7) && !robot_on_line) {
+
+  if (home_id >= 0 && home_dist < 70 && (abs(dir) > abs(yaw) + 2) && !robot_on_line) {
     speed = 0;
     target = yaw;
     pixy.setLED(255, 255, 255);
   }
 
-  setLED(RIGHT_LED, (target == yaw));
   move();
   //    if (btn_left && btn_right && btn_center)
   //      startMenu();
