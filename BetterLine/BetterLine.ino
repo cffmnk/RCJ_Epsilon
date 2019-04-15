@@ -487,7 +487,7 @@ void loop() {
       int y = pixy.ccc.blocks[block_id].m_y;
       dir = calcAngle(block_id);
     } else {
-      speed = 50;
+      speed = 300;
       target = yaw;
       line_return = 300;
       dir = PI;

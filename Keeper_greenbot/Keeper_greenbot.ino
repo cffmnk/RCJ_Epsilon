@@ -77,6 +77,8 @@ bool line_found = false;
 bool robot_on_line = false;
 uint32_t line_timer;
 
+uint32_t goal_timer = 0;
+
 short ball_id = -1;
 short target_id = -1;
 short home_id = -1;
@@ -196,7 +198,7 @@ void updateIMU() {
     }
     imu_angle = (imu_angle - 126) * PI / 180;
     if (btn_left && btn_right) {
-      yaw_offset = imu_angle;
+      Serial3.write('c');
     }
     yaw = (constrainAngle(imu_angle - yaw_offset));
   }
@@ -451,18 +453,38 @@ void loop() {
 
   dir = home_dir;
   speed = 0;
-  if (ball_id >= 0 && abs(ball_dir) > 0.1) {
-    dir = sign(ball_dir) * PI / 2;
-    speed = abs(ball_dir) * 400 + ball_dist * 10;
-  }
-  if (home_dist > 40) {
-    dir = home_dir;
+  if (home_dist < 35) {
+    dir = 0;
     speed = 100;
+  }
+  
+  if (ball_id >= 0 && abs(ball_dir) > 0.1 && abs(ball_dir)) {
+    dir = sign(ball_dir) * PI / 2;
+    speed = 200 + abs(ball_dir) * 400;
+  }
+  if (home_dist > 45) {
+    dir = home_dir;
+    speed = 300;
   }
   if (home_dist > 80) {
     dir = home_dir;
     speed = 300;
   }
+
+  if (ball_id >= 0 && ball_dist < 70 && home_dist < 70 && (home_dist < 50 ? abs(ball_dir) < PI / 3 : abs(ball_dir) < PI / 2)) {
+    dir = ball_dir;
+    speed = 340;
+  }
+  if (home_id == -1) {
+    goal_timer = millis();
+  }
+  if (millis() - goal_timer < 100) {
+     dir = 0;
+     speed = 200;
+  }
+
+  if (abs(ball_dir) > 2.6)
+    speed = 0;
 
   move();
 }

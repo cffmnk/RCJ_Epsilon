@@ -13,7 +13,7 @@
 #define GYRO_TYPE 1 // 1 - sparkfun, 2 - gy25
 
 #define CAM_CENTER_X 153
-#define CAM_CENTER_Y 130
+#define CAM_CENTER_Y 128
 
 // ***********************
 // END OF SETUP AREA

@@ -88,10 +88,10 @@ void loop() {
     }
   }
 
-  if (angle > 120)
-    angle = 120;
-  if (angle < -120)
-    angle = -120;
+  if (angle > 126)
+    angle = 126;
+  if (angle < -126)
+    angle = -126;
   LOG_PORT.println(angle);
-  DATA_PORT.write(angle + 120);
+  DATA_PORT.write(angle + 126);
 }
