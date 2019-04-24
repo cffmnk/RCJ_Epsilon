@@ -81,13 +81,7 @@ void loop() {
     return;
   imu.computeEulerAngles();
   int angle = (int(imu.yaw) - target + 540) % 360 - 180;
-  if (DATA_PORT.available()) {
-    if (DATA_PORT.read() == 'c') {
-      target = int(imu.yaw);
-      blinkLED();
-    }
-  }
-
+  
   if (angle > 126)
     angle = 126;
   if (angle < -126)

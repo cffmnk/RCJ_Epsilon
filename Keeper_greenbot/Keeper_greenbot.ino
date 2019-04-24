@@ -203,61 +203,61 @@ void updateIMU() {
     yaw = (constrainAngle(imu_angle - yaw_offset));
   }
 #endif // GYRO_TYPE == 1
-  //#if GYRO_TYPE == 2
-  //  if (!dmpReady) {
-  //    yaw = 0;
-  //  } else {
-  //    while (!mpuInterrupt && fifoCount < packetSize) {
-  //      if (mpuInterrupt && fifoCount < packetSize) {
-  //        // try to get out of the infinite loop
-  //        fifoCount = mpu.getFIFOCount();
-  //      }
-  //      // other program behavior stuff here
-  //      // .
-  //      // .
-  //      // .
-  //      // if you are really paranoid you can frequently test in between other
-  //      // stuff to see if mpuInterrupt is true, and if so, "break;" from the
-  //      // while() loop to immediately process the MPU data
-  //      // .
-  //      // .
-  //      // .
-  //    }
-  //    // reset interrupt flag and get INT_STATUS byte
-  //    mpuInterrupt = false;
-  //    mpuIntStatus = mpu.getIntStatus();
-  //    // get current FIFO count
-  //    fifoCount = mpu.getFIFOCount();
-  //
-  //    // check for overflow (this should never happen unless our code is too inefficient)
-  //    if ((mpuIntStatus & _BV(MPU6050_INTERRUPT_FIFO_OFLOW_BIT)) || fifoCount >= 1024) {
-  //      // reset so we can continue cleanly
-  //      mpu.resetFIFO();
-  //      fifoCount = mpu.getFIFOCount();
-  //
-  //      // otherwise, check for DMP data ready interrupt (this should happen frequently)
-  //    } else if (mpuIntStatus & _BV(MPU6050_INTERRUPT_DMP_INT_BIT)) {
-  //      // wait for correct available data length, should be a VERY short wait
-  //      while (fifoCount < packetSize) fifoCount = mpu.getFIFOCount();
-  //
-  //      // read a packet from FIFO
-  //      mpu.getFIFOBytes(fifoBuffer, packetSize);
-  //
-  //      // track FIFO count here in case there is > 1 packet available
-  //      // (this lets us immediately read more without waiting for an interrupt)
-  //      fifoCount -= packetSize;
-  //
-  //      mpu.dmpGetQuaternion(&q, fifoBuffer);
-  //      mpu.dmpGetGravity(&gravity, &q);
-  //      mpu.dmpGetYawPitchRoll(ypr, &q, &gravity);
-  //
-  //      if (btn_left && btn_right) {
-  //        yaw_offset = ypr[0];
-  //      }
-  //      yaw = -(constrainAngle(ypr[0] - yaw_offset));
-  //    }
-  //  }
-  //#endif // GYRO_TYPE == 2
+  #if GYRO_TYPE == 2
+    if (!dmpReady) {
+      yaw = 0;
+    } else {
+      while (!mpuInterrupt && fifoCount < packetSize) {
+        if (mpuInterrupt && fifoCount < packetSize) {
+          // try to get out of the infinite loop
+          fifoCount = mpu.getFIFOCount();
+        }
+        // other program behavior stuff here
+        // .
+        // .
+        // .
+        // if you are really paranoid you can frequently test in between other
+        // stuff to see if mpuInterrupt is true, and if so, "break;" from the
+        // while() loop to immediately process the MPU data
+        // .
+        // .
+        // .
+      }
+      // reset interrupt flag and get INT_STATUS byte
+      mpuInterrupt = false;
+      mpuIntStatus = mpu.getIntStatus();
+      // get current FIFO count
+      fifoCount = mpu.getFIFOCount();
+  
+      // check for overflow (this should never happen unless our code is too inefficient)
+      if ((mpuIntStatus & _BV(MPU6050_INTERRUPT_FIFO_OFLOW_BIT)) || fifoCount >= 1024) {
+        // reset so we can continue cleanly
+        mpu.resetFIFO();
+        fifoCount = mpu.getFIFOCount();
+  
+        // otherwise, check for DMP data ready interrupt (this should happen frequently)
+      } else if (mpuIntStatus & _BV(MPU6050_INTERRUPT_DMP_INT_BIT)) {
+        // wait for correct available data length, should be a VERY short wait
+        while (fifoCount < packetSize) fifoCount = mpu.getFIFOCount();
+  
+        // read a packet from FIFO
+        mpu.getFIFOBytes(fifoBuffer, packetSize);
+  
+        // track FIFO count here in case there is > 1 packet available
+        // (this lets us immediately read more without waiting for an interrupt)
+        fifoCount -= packetSize;
+  
+        mpu.dmpGetQuaternion(&q, fifoBuffer);
+        mpu.dmpGetGravity(&gravity, &q);
+        mpu.dmpGetYawPitchRoll(ypr, &q, &gravity);
+  
+        if (btn_left && btn_right) {
+          yaw_offset = ypr[0];
+        }
+        yaw = (constrainAngle(ypr[0] - yaw_offset));
+      }
+    }
+  #endif // GYRO_TYPE == 2
 }
 
 void followBall() {
@@ -457,7 +457,7 @@ void loop() {
     dir = 0;
     speed = 100;
   }
-  
+
   if (ball_id >= 0 && abs(ball_dir) > 0.1 && abs(ball_dir)) {
     dir = sign(ball_dir) * PI / 2;
     speed = 200 + abs(ball_dir) * 400;
@@ -475,12 +475,12 @@ void loop() {
     dir = ball_dir;
     speed = 340;
   }
-  if (home_id == -1) {
+  if (home_id == -1 || (home_id >= 0 && abs(home_dir) < 1.7)) {
     goal_timer = millis();
   }
   if (millis() - goal_timer < 100) {
-     dir = 0;
-     speed = 200;
+    dir = 0;
+    speed = 200;
   }
 
   if (abs(ball_dir) > 2.6)

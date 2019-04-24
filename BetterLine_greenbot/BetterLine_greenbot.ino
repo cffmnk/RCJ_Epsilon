@@ -92,8 +92,6 @@ float ball_dir = 0;
 float home_dir = 0;
 float target_dir = 0;
 
-uint32_t ball_t = 0, target_t = 0, home_t = 0;
-
 bool turn_on_yaw = false;
 
 uint32_t ball_found;
@@ -129,13 +127,13 @@ void setSpeed(byte port, short motor_speed) {
 }
 
 void move() {
-  int u = target * K_YAW;
-  if (target > PI / 2)
+  if (target >= PI / 2)
     speed = 0;
+  int u = target * K_YAW;
   setSpeed(MOTOR_A,  -speed * cos((dir + 0.785398163397448)) + u);
   setSpeed(MOTOR_B,   speed * cos((dir - 0.785398163397448)) + u);
   setSpeed(MOTOR_C,  -speed * cos((dir + 0.785398163397448)) - u);
-  setSpeed(MOTOR_D,  -speed * cos((dir - 0.785398163397448)) + u);
+  setSpeed(MOTOR_D,  speed * cos((dir - 0.785398163397448)) - u);
 }
 
 void setLED(byte port, bool state) {
@@ -162,7 +160,7 @@ bool checkLine() {
     digitalWrite(MPL_2, i >> 1);
     line_state[0] |= (analogRead(A0) > WHITE_LINE);
     line_state[1] |= (analogRead(A1) > WHITE_LINE);
-    line_state[2] |= (analogRead(A2) > 600);
+    line_state[2] |= (analogRead(A2) > WHITE_LINE);
     line_state[3] |= (analogRead(A3) > WHITE_LINE);
   }
   // Serial.println(analogRead(A0));
@@ -229,6 +227,7 @@ void updateIMU() {
       // .
       // .
     }
+
     // reset interrupt flag and get INT_STATUS byte
     mpuInterrupt = false;
     mpuIntStatus = mpu.getIntStatus();
@@ -260,7 +259,7 @@ void updateIMU() {
       if (btn_left && btn_right) {
         yaw_offset = ypr[0];
       }
-      yaw = -(constrainAngle(ypr[0] - yaw_offset));
+      yaw = (constrainAngle(ypr[0] - yaw_offset));
     }
   }
 #endif // GYRO_TYPE == 2
@@ -273,7 +272,6 @@ void followBall() {
   }
 
   if (ball_id >= 0) {
-    pixy.setLED(0, 255, 0);
     ball_found = millis();
     int x = pixy.ccc.blocks[ball_id].m_x;
     int y = pixy.ccc.blocks[ball_id].m_y;
@@ -294,21 +292,21 @@ void followBall() {
       }
     }
 
-    if (abs(ang) > 2.6 && ball_dist < 55) {
-      dir = ang + PI / 2;
+    if (abs(ang) > 2.2 && ball_dist < 55) {
+      dir = ball_dir + PI / 2 * sign(ang);
       setLED(CENTER_LED, HIGH);
     } else {
       setLED(CENTER_LED, LOW);
     }
 
-    if (x > 180 && x < 200 && y > 115 && y < 145) {
+    if (x > 180 && x < 202 && y > 120 && y < 140) {
       speed = BOOST_SPEED;
+      dir = 0;
       setLED(CENTER_LED, HIGH);
     } else {
       setLED(CENTER_LED, LOW);
     }
   } else {
-    pixy.setLED(0, 0, 0);
     if (millis() - ball_found > 500) {
       dir = home;
       speed = BOOST_SPEED;
@@ -405,10 +403,10 @@ void setup() {
   mpu.initialize();
   pinMode(INTERRUPT_PIN, INPUT);
   devStatus = mpu.dmpInitialize();
-  mpu.setXGyroOffset(199);
-  mpu.setYGyroOffset(-17);
-  mpu.setZGyroOffset(-9);
-  mpu.setZAccelOffset(3989);
+  mpu.setXGyroOffset(-42);
+  mpu.setYGyroOffset(-62);
+  mpu.setZGyroOffset(78);
+  mpu.setZAccelOffset(928);
 
   if (!devStatus) {
     mpu.setDMPEnabled(true);
@@ -430,12 +428,10 @@ void setup() {
   }
 
   pixy.setLED(0, 0, 0);
-
   // startMenu();
 }
 
 void loop() {
-
   speed = BASIC_SPEED;
   line_found = checkLine();
   checkButtons();
@@ -445,7 +441,6 @@ void loop() {
   ball_id = -1;
   target_id = -1;
   home_id = -1;
-
   pixy.ccc.getBlocks(true, CCC_SIG1 | CCC_SIG2 | CCC_SIG3);
   if (pixy.ccc.numBlocks) {
     for (int i = 0; i < pixy.ccc.numBlocks; ++i) {
@@ -453,31 +448,27 @@ void loop() {
         ball_id = i;
         ball_dist = calcDist(ball_id);
         ball_dir = calcAngle(ball_id);
-        ball_t = millis();
       }
-      if (pixy.ccc.blocks[i].m_signature == ENEMY_GOAL) {
+      if (pixy.ccc.blocks[i].m_signature == ENEMY_GOAL && (target_id == -1 || pixy.ccc.blocks[i].m_height * pixy.ccc.blocks[i].m_width > pixy.ccc.blocks[target_id].m_height * pixy.ccc.blocks[target_id].m_width)) {
         target_id = i;
         target_dist = calcDist(target_id);
         target_dir = calcAngle(target_id);
         target = target_dir;
-        target_t = millis();
       }
-      if (pixy.ccc.blocks[i].m_signature == HOME_GOAL && (home_id == -1 || pixy.ccc.blocks[i].m_height * pixy.ccc.blocks[i].m_width > pixy.ccc.blocks[home_id].m_height * pixy.ccc.blocks[i].m_width)) {
+      if (pixy.ccc.blocks[i].m_signature == HOME_GOAL && (home_id == -1 || pixy.ccc.blocks[i].m_height * pixy.ccc.blocks[i].m_width > pixy.ccc.blocks[home_id].m_height * pixy.ccc.blocks[target_id].m_width)) {
         home_id = i;
         home_dist = calcDist(home_id);
         home_dir = calcAngle(home_id);
-        home_t = millis();
       }
     }
   }
-
   if (line_found) {
     robot_on_line = true;
     line_timer = millis();
   } else {
     if (millis() - line_timer > line_return) {
       robot_on_line = false;
-      line_return = 1;
+      line_return = 100;
     }
   }
 
@@ -487,9 +478,9 @@ void loop() {
   } else {
     setLED(LEFT_LED, HIGH);
     int block_id = -1;
-    if (home_id >= 0 && calcDist(home_id) > 50) {
+    if (home_id >= 0) {
       block_id = home_id;
-    } else if (target_id >= 0 && calcDist(target_id) > 83) {
+    } else if (target_id >= 0 && calcDist(target_id) > 100 ) {
       block_id = target_id;
     }
 
@@ -498,19 +489,18 @@ void loop() {
       int y = pixy.ccc.blocks[block_id].m_y;
       dir = calcAngle(block_id);
     } else {
-      speed = 300;
+      speed = 250;
+      target = yaw;
       line_return = 300;
       dir = PI;
     }
   }
 
-  if (home_id >= 0 && home_dist < 80 && (abs(dir) > abs(yaw) + 2) && !robot_on_line) {
+  if (home_id >= 0 && home_dist < 80 && (ball_id == -1 || abs(ball_dir) > 2) && !robot_on_line) {
     speed = 0;
     target = yaw;
-    pixy.setLED(255, 255, 255);
   }
-  Serial.println(yaw);
   move();
-  //    if (btn_left && btn_right && btn_center)
-  //      startMenu();
+  if (btn_left && btn_right && btn_center)
+    startMenu();
 }

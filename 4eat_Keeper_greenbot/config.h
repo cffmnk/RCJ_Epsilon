@@ -4,13 +4,13 @@
 
 #define BASIC_SPEED 340 // 0 - 360
 #define BOOST_SPEED 340 // 0 - 360
-#define K_YAW 190 // heading coefficient
+#define K_YAW 400 // heading coefficient
 
 #define ENEMY_GOAL 2 // 2 - yellow, 3 - blue
 
 #define WHITE_LINE 950
 
-#define GYRO_TYPE 1 // 1 - sparkfun, 2 - mpu6050
+#define GYRO_TYPE 1 // 1 - sparkfun, 2 - gy25
 
 #define CAM_CENTER_X 153
 #define CAM_CENTER_Y 128

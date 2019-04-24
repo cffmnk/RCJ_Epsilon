@@ -1,7 +1,5 @@
 #include "config.h"
 #include "math.h"
-#include <MedianFilterLib.h>
-
 #include <Pixy2.h>
 
 #if GYRO_TYPE == 2
@@ -60,8 +58,6 @@ void dmpDataReady() {
 
 Pixy2 pixy;
 
-MedianFilter<float> gyroFilter(3);
-
 short speed = 0;
 float dir = 0;
 float target  = 0;
@@ -80,7 +76,8 @@ bool line_state[4];
 bool line_found = false;
 bool robot_on_line = false;
 uint32_t line_timer;
-short line_return = 1;
+
+uint32_t goal_timer = 0;
 
 short ball_id = -1;
 short target_id = -1;
@@ -91,8 +88,6 @@ float target_dist = 1000;
 float ball_dir = 0;
 float home_dir = 0;
 float target_dir = 0;
-
-uint32_t ball_t = 0, target_t = 0, home_t = 0;
 
 bool turn_on_yaw = false;
 
@@ -127,15 +122,14 @@ void setSpeed(byte port, short motor_speed) {
   digitalWrite(motors_in1[port], (motor_speed >= 0));
   digitalWrite(motors_in2[port], !(motor_speed >= 0));
 }
-
 void move() {
-  int u = target * K_YAW;
-  if (target > PI / 2)
+  if (target >= PI / 2)
     speed = 0;
+  int u = target * K_YAW;
   setSpeed(MOTOR_A,  -speed * cos((dir + 0.785398163397448)) + u);
   setSpeed(MOTOR_B,   speed * cos((dir - 0.785398163397448)) + u);
   setSpeed(MOTOR_C,  -speed * cos((dir + 0.785398163397448)) - u);
-  setSpeed(MOTOR_D,  -speed * cos((dir - 0.785398163397448)) + u);
+  setSpeed(MOTOR_D,  speed * cos((dir - 0.785398163397448)) - u);
 }
 
 void setLED(byte port, bool state) {
@@ -162,7 +156,7 @@ bool checkLine() {
     digitalWrite(MPL_2, i >> 1);
     line_state[0] |= (analogRead(A0) > WHITE_LINE);
     line_state[1] |= (analogRead(A1) > WHITE_LINE);
-    line_state[2] |= (analogRead(A2) > 600);
+    line_state[2] |= (analogRead(A2) > WHITE_LINE);
     line_state[3] |= (analogRead(A3) > WHITE_LINE);
   }
   // Serial.println(analogRead(A0));
@@ -204,66 +198,66 @@ void updateIMU() {
     }
     imu_angle = (imu_angle - 126) * PI / 180;
     if (btn_left && btn_right) {
-      yaw_offset = imu_angle;
+      Serial3.write('c');
     }
-    yaw = gyroFilter.AddValue((constrainAngle(imu_angle - yaw_offset)));
+    yaw = (constrainAngle(imu_angle - yaw_offset));
   }
 #endif // GYRO_TYPE == 1
-#if GYRO_TYPE == 2
-  if (!dmpReady) {
-    yaw = 0;
-  } else {
-    while (!mpuInterrupt && fifoCount < packetSize) {
-      if (mpuInterrupt && fifoCount < packetSize) {
-        // try to get out of the infinite loop
-        fifoCount = mpu.getFIFOCount();
-      }
-      // other program behavior stuff here
-      // .
-      // .
-      // .
-      // if you are really paranoid you can frequently test in between other
-      // stuff to see if mpuInterrupt is true, and if so, "break;" from the
-      // while() loop to immediately process the MPU data
-      // .
-      // .
-      // .
-    }
-    // reset interrupt flag and get INT_STATUS byte
-    mpuInterrupt = false;
-    mpuIntStatus = mpu.getIntStatus();
-    // get current FIFO count
-    fifoCount = mpu.getFIFOCount();
-
-    // check for overflow (this should never happen unless our code is too inefficient)
-    if ((mpuIntStatus & _BV(MPU6050_INTERRUPT_FIFO_OFLOW_BIT)) || fifoCount >= 1024) {
-      // reset so we can continue cleanly
-      mpu.resetFIFO();
-      fifoCount = mpu.getFIFOCount();
-
-      // otherwise, check for DMP data ready interrupt (this should happen frequently)
-    } else if (mpuIntStatus & _BV(MPU6050_INTERRUPT_DMP_INT_BIT)) {
-      // wait for correct available data length, should be a VERY short wait
-      while (fifoCount < packetSize) fifoCount = mpu.getFIFOCount();
-
-      // read a packet from FIFO
-      mpu.getFIFOBytes(fifoBuffer, packetSize);
-
-      // track FIFO count here in case there is > 1 packet available
-      // (this lets us immediately read more without waiting for an interrupt)
-      fifoCount -= packetSize;
-
-      mpu.dmpGetQuaternion(&q, fifoBuffer);
-      mpu.dmpGetGravity(&gravity, &q);
-      mpu.dmpGetYawPitchRoll(ypr, &q, &gravity);
-
-      if (btn_left && btn_right) {
-        yaw_offset = ypr[0];
-      }
-      yaw = -(constrainAngle(ypr[0] - yaw_offset));
-    }
-  }
-#endif // GYRO_TYPE == 2
+  //#if GYRO_TYPE == 2
+  //  if (!dmpReady) {
+  //    yaw = 0;
+  //  } else {
+  //    while (!mpuInterrupt && fifoCount < packetSize) {
+  //      if (mpuInterrupt && fifoCount < packetSize) {
+  //        // try to get out of the infinite loop
+  //        fifoCount = mpu.getFIFOCount();
+  //      }
+  //      // other program behavior stuff here
+  //      // .
+  //      // .
+  //      // .
+  //      // if you are really paranoid you can frequently test in between other
+  //      // stuff to see if mpuInterrupt is true, and if so, "break;" from the
+  //      // while() loop to immediately process the MPU data
+  //      // .
+  //      // .
+  //      // .
+  //    }
+  //    // reset interrupt flag and get INT_STATUS byte
+  //    mpuInterrupt = false;
+  //    mpuIntStatus = mpu.getIntStatus();
+  //    // get current FIFO count
+  //    fifoCount = mpu.getFIFOCount();
+  //
+  //    // check for overflow (this should never happen unless our code is too inefficient)
+  //    if ((mpuIntStatus & _BV(MPU6050_INTERRUPT_FIFO_OFLOW_BIT)) || fifoCount >= 1024) {
+  //      // reset so we can continue cleanly
+  //      mpu.resetFIFO();
+  //      fifoCount = mpu.getFIFOCount();
+  //
+  //      // otherwise, check for DMP data ready interrupt (this should happen frequently)
+  //    } else if (mpuIntStatus & _BV(MPU6050_INTERRUPT_DMP_INT_BIT)) {
+  //      // wait for correct available data length, should be a VERY short wait
+  //      while (fifoCount < packetSize) fifoCount = mpu.getFIFOCount();
+  //
+  //      // read a packet from FIFO
+  //      mpu.getFIFOBytes(fifoBuffer, packetSize);
+  //
+  //      // track FIFO count here in case there is > 1 packet available
+  //      // (this lets us immediately read more without waiting for an interrupt)
+  //      fifoCount -= packetSize;
+  //
+  //      mpu.dmpGetQuaternion(&q, fifoBuffer);
+  //      mpu.dmpGetGravity(&gravity, &q);
+  //      mpu.dmpGetYawPitchRoll(ypr, &q, &gravity);
+  //
+  //      if (btn_left && btn_right) {
+  //        yaw_offset = ypr[0];
+  //      }
+  //      yaw = -(constrainAngle(ypr[0] - yaw_offset));
+  //    }
+  //  }
+  //#endif // GYRO_TYPE == 2
 }
 
 void followBall() {
@@ -278,27 +272,19 @@ void followBall() {
     int x = pixy.ccc.blocks[ball_id].m_x;
     int y = pixy.ccc.blocks[ball_id].m_y;
 
-    float ang = constrainAngle(ball_dir - yaw);
-
     dir = calcAngle(ball_id);
     //Serial.println(dist);
     if (ball_dist < 75) {
       if (abs(dir) < PI / 2) {
-        if (ball_dist < 50 && abs(dir) < PI / 4)
-          dir *= 4;
-        else
-          dir *= 2;
+        dir *= 2;
       } else {
         speed = BOOST_SPEED;
         dir = home;
       }
     }
 
-    if (abs(ang) > 2.6 && ball_dist < 55) {
-      dir = ang + PI / 2;
-      setLED(CENTER_LED, HIGH);
-    } else {
-      setLED(CENTER_LED, LOW);
+    if (y > 100 && y < 165 && x < CAM_CENTER_X && ball_dist < 80) {
+      dir = (1 - 2 * (dir >= 0)) * PI / 2;
     }
 
     if (x > 180 && x < 200 && y > 115 && y < 145) {
@@ -309,7 +295,7 @@ void followBall() {
     }
   } else {
     pixy.setLED(0, 0, 0);
-    if (millis() - ball_found > 500) {
+    if (millis() - ball_found > 600) {
       dir = home;
       speed = BOOST_SPEED;
     }
@@ -406,9 +392,9 @@ void setup() {
   pinMode(INTERRUPT_PIN, INPUT);
   devStatus = mpu.dmpInitialize();
   mpu.setXGyroOffset(199);
-  mpu.setYGyroOffset(-17);
-  mpu.setZGyroOffset(-9);
-  mpu.setZAccelOffset(3989);
+  mpu.setYGyroOffset(-16);
+  mpu.setZGyroOffset(-8);
+  mpu.setZAccelOffset(3990);
 
   if (!devStatus) {
     mpu.setDMPEnabled(true);
@@ -435,7 +421,6 @@ void setup() {
 }
 
 void loop() {
-
   speed = BASIC_SPEED;
   line_found = checkLine();
   checkButtons();
@@ -445,72 +430,70 @@ void loop() {
   ball_id = -1;
   target_id = -1;
   home_id = -1;
-
-  pixy.ccc.getBlocks(true, CCC_SIG1 | CCC_SIG2 | CCC_SIG3);
+  pixy.ccc.getBlocks();
   if (pixy.ccc.numBlocks) {
     for (int i = 0; i < pixy.ccc.numBlocks; ++i) {
       if (pixy.ccc.blocks[i].m_signature == 1 && (ball_id == -1 || pixy.ccc.blocks[i].m_age > pixy.ccc.blocks[ball_id].m_age)) {
         ball_id = i;
         ball_dist = calcDist(ball_id);
         ball_dir = calcAngle(ball_id);
-        ball_t = millis();
       }
       if (pixy.ccc.blocks[i].m_signature == ENEMY_GOAL) {
         target_id = i;
         target_dist = calcDist(target_id);
         target_dir = calcAngle(target_id);
-        target = target_dir;
-        target_t = millis();
       }
       if (pixy.ccc.blocks[i].m_signature == HOME_GOAL && (home_id == -1 || pixy.ccc.blocks[i].m_height * pixy.ccc.blocks[i].m_width > pixy.ccc.blocks[home_id].m_height * pixy.ccc.blocks[i].m_width)) {
         home_id = i;
         home_dist = calcDist(home_id);
         home_dir = calcAngle(home_id);
-        home_t = millis();
       }
     }
   }
 
-  if (line_found) {
-    robot_on_line = true;
-    line_timer = millis();
-  } else {
-    if (millis() - line_timer > line_return) {
-      robot_on_line = false;
-      line_return = 1;
-    }
+  dir = home_dir;
+  speed = 0;
+  if (home_dist < 35) {
+    dir = 0;
+    speed = 100;
   }
 
-  if (!robot_on_line) {
-    followBall();
-    setLED(LEFT_LED, LOW);
-  } else {
-    setLED(LEFT_LED, HIGH);
-    int block_id = -1;
-    if (home_id >= 0 && calcDist(home_id) > 50) {
-      block_id = home_id;
-    } else if (target_id >= 0 && calcDist(target_id) > 83) {
-      block_id = target_id;
-    }
-
-    if (block_id >= 0) {
-      int x = pixy.ccc.blocks[block_id].m_x;
-      int y = pixy.ccc.blocks[block_id].m_y;
-      dir = calcAngle(block_id);
-    } else {
-      speed = 300;
-      line_return = 300;
-      dir = PI;
-    }
+  if (ball_id >= 0 && abs(ball_dir) > 0.1 && abs(ball_dir)) {
+    dir = sign(ball_dir) * PI / 2;
+    speed = 200 + abs(ball_dir) * 400;
+  }
+  if (home_dist > 45) {
+    dir = home_dir;
+    speed = 300;
+  }
+  if (home_dist > 80) {
+    dir = home_dir;
+    speed = 300;
   }
 
-  if (home_id >= 0 && home_dist < 80 && (abs(dir) > abs(yaw) + 2) && !robot_on_line) {
+  if (ball_id >= 0 && ball_dist < 70 && home_dist < 70 && abs(ball_dir) < PI / 4) {
+    dir = ball_dir;
+    speed = 340;
+  }
+  if (home_id >= 0 && abs(home_dir) < 1.7) {
+    goal_timer = millis();
+  }
+  if (millis() - goal_timer < 100) {
+    dir = 0;
+    speed = 200;
+    setLED(CENTER_LED, HIGH);
+  } else {
+    setLED(CENTER_LED, LOW);
+  }
+
+  if (abs(ball_dir) > 2.6)
     speed = 0;
-    target = yaw;
-    pixy.setLED(255, 255, 255);
+
+  if (home_id == -1) {
+    dir = PI;
+    speed = 100;
   }
-  Serial.println(yaw);
+
+
   move();
-  //    if (btn_left && btn_right && btn_center)
-  //      startMenu();
 }
