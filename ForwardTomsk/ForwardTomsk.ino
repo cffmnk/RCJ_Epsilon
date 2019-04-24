@@ -108,7 +108,14 @@ void dmpDataReady() {
   mpuInterrupt = true;
 }
 
+byte lineSide = 255;
+int lineCount = 0;
+uint32_t ballCatched = 0;
+uint32_t kickTimer = 0;
+
 Pixy2 pixy;
+
+uint32_t kick_t = 0;
 
 unsigned long gyroTimer = 0;
 float timeStep = 0.015;
@@ -127,7 +134,7 @@ const byte motors_in1[4] = {36, 42, 44, 34};
 const byte motors_in2[4] = {38, 40, 46, 32};
 
 bool lineState[4];
-bool lineFound = false;
+bool lineFound = false, pr_lineFound = false;
 uint32_t line_t = millis();
 
 bool ledLeft, ledRight, ledCenter;
@@ -137,16 +144,9 @@ bool ballFound = false, targetFound = false, homeFound = false;
 
 camBlock ball, target, home;
 
-byte lineSide = -1;
-
 template <typename T>
 T sign(T value) {
   return T((value > 0) - (value < 0));
-}
-
-template <typename T>
-T trunc(T number, T low, T high) {
-  return max(low, min(number, high));
 }
 
 double constrainAngle(double x) {
@@ -258,14 +258,15 @@ void setSpeed(byte port, short motor_speed) {
 }
 
 void move() {
-  int u = heading * K_YAW;
-  if (heading > PI / 2)
+  if (heading >= PI / 2)
     speed = 0;
+  int u = heading * K_YAW;
   setSpeed(MOTOR_A,  -speed * cos((dir + 0.785398163397448)) + u);
   setSpeed(MOTOR_B,   speed * cos((dir - 0.785398163397448)) + u);
   setSpeed(MOTOR_C,  -speed * cos((dir + 0.785398163397448)) - u);
-  setSpeed(MOTOR_D,  -speed * cos((dir - 0.785398163397448)) + u);
+  setSpeed(MOTOR_D,  speed * cos((dir - 0.785398163397448)) - u);
 }
+
 
 void setLED(byte port, bool state) {
   digitalWrite(port, state);
@@ -341,6 +342,14 @@ void updateCamera() {
   targetFound = checkTimer(target_t, 300);
 }
 
+void kick() {
+  if (millis() - kick_t > 2000) {
+    digitalWrite(KICKER, HIGH);
+    delay(10);
+    kick_t = millis();
+  }
+}
+
 void followBall() {
   float homeDir = PI;
   if (homeFound)
@@ -363,13 +372,18 @@ void followBall() {
     if (abs(ang) > 2.3 && ball.dist < 60)
       dir = ang + PI / 2 * sign(ang);
 
-    if (ball.x > 195 && ball.x < 204 && ball.y > 122 && ball.y < 138) {
+    if ((ball.x > 190 && ball.x < 197 && ball.y > 121 && ball.y < 140) || (millis() - ballCatched < 5)) {
       dir = 0;
-      heading = calcAngle(target.x, target.y);
       speed = BOOST_SPEED;
+      ballCatched = millis();
+      if (millis() - kickTimer > 150) {
+        kick();
+      }
+    } else {
+      kickTimer = millis();
     }
   } else {
-    dir = homeDir;
+    dir = PI;
     heading = yaw;
     speed = 300;
   }
@@ -473,10 +487,14 @@ void setup() {
   // configure LED for output
   pinMode(LED_PIN, OUTPUT);
 
+  pinMode(KICKER, OUTPUT);
+  digitalWrite(KICKER, LOW);
+  delay(10);
   setLED(CENTER_LED, LOW);
 }
 
 void loop() {
+  digitalWrite(KICKER, LOW);
   speed = BASIC_SPEED;
   ledLeft = false;
   ledRight = false;
@@ -495,71 +513,60 @@ void loop() {
     }
     line_t = millis();
   } else {
-    if (checkTimer(line_t, 300))
+    if (checkTimer(line_t, 100))
       lineFound = true;
   }
+
+  if (!lineFound && pr_lineFound) {
+    lineCount++;
+  }
+
+  if (!checkTimer(line_t, 3000)) {
+    lineCount = 0;
+  }
+
   checkButtons();
   updateCamera();
   updateGyro();
   heading = yaw;
-  //
-  //  if (targetFound) {
-  //    //    if (target.dist < 100) {
-  //    //      heading = calcAngle(target.x + target.width / 3, target.y + target.height / 3);
-  //    //    }
-  //    heading = calcAngle(target.x, target.y);
-  //    // heading = calcAngle(target.x, target.y);
-  //    //heading = calcAngle(target.x + target.width / 3, target.y + target.height / 3);
-  //    // heading = calcAngle(target.x - target.width / 3, target.y - target.height / 3);
-  //  }
-  followBall();
-  if (targetFound && target.dist < 90) {
-    heading = target.dir;
+
+  if (targetFound) {
+    //    if (target.dist < 100) {
+    //      heading = calcAngle(target.x + target.width / 3, target.y + target.height / 3);
+    //    }
+    //heading = calcAngle(target.x, target.y);
+    heading = calcAngle(target.x, target.y);
+    // heading = calcAngle(target.x + target.width / 3, target.y + target.height / 3);
+    // heading = calcAngle(target.x - target.width / 3, target.y - target.height / 3);
   }
-    
+
   if (!lineFound) {
-    speed = BASIC_SPEED;
+    followBall();
   } else {
-    speed = 120;
-    if ((homeFound && home.dist > 80 && targetFound && target.dist > 80)) {
-      if (lineSide == 0) {
-        if (lineState[3]) {
-          speed = 60;
-          dir = PI / 2;
-          heading = yaw;
-        }
-      }
-      if (lineSide == 3) {
-        if (lineState[0]) {
-          speed = 60;
-          dir = - PI / 2;
-          heading = yaw;
-        }
-      }
-      if (lineSide == 1 && lineFound) {
-        dir = target.dir;
-        heading = yaw;
-      }
-      if (lineSide == 2 && lineFound) {
-        dir = home.dir;
-        heading = yaw;
-      }
+    if (homeFound) {
+      dir = home.dir;
+    } else if (targetFound && target.dist > 70) {
+      dir = target.dir;
     } else {
-      if (homeFound) {
-        dir = home.dir;
-        heading = yaw;
-      } else {
-        dir = PI;
-        heading = yaw;
-      }
+      dir = PI;
+      heading = yaw;
+      speed = 100;
     }
   }
 
+  //  if (lineCount >= 3) {
+  //    heading = yaw;
+  //    speed = 0;
+  //    ledCenter = HIGH;
+  //  }
   if (homeFound && abs(home.dir) > 2 && abs(dir) > 2 && home.dist < 80) {
     heading = yaw;
     speed = 0;
   }
-
+  // heading = calcAngle(target.x, target.y);
+  //  heading = calcAngle(target.x + target.width / 3, target.y + target.height / 3);
+  //heading = calcAngle(target.x - target.width / 3, target.y - target.height / 3);
+  // speed = 0;
   move();
   setLED(LEFT_LED, ledLeft);
   setLED(RIGHT_LED, ledRight);
