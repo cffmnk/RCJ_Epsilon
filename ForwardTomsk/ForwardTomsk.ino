@@ -108,6 +108,9 @@ void dmpDataReady() {
   mpuInterrupt = true;
 }
 
+uint32_t arcTimer = 0;
+byte arc_start = 0;
+
 byte lineSide = 255;
 int lineCount = 0;
 uint32_t ballCatched = 0;
@@ -246,6 +249,52 @@ void checkButtons() {
   buttonRight = digitalRead(RIGHT_BTN);
 }
 
+void setLED(byte port, bool state) {
+  digitalWrite(port, state);
+}
+
+void arcStart() {
+  if (arc_start == 3) {
+    while (millis() - arcTimer < 300) {
+      updateGyro();
+      heading = yaw;
+      if (arc_start == 2) {
+        dir = PI / 6;
+      }
+      if (arc_start == 3) {
+        dir = -PI / 6;
+      }
+      speed = 200;
+      move();
+    }
+  }
+
+  if (arc_start == 2) {
+    updateCamera();
+    while (target.dist > 91.2) {
+      updateGyro();
+      heading = yaw;
+      speed = 340;
+      dir = 0;
+      updateCamera();
+      move();
+    }
+    arcTimer = millis();
+    ball.dist = 2000;
+    while (true) {
+      updateGyro();
+      updateCamera();
+      //heading = calcAngle(target.x - target.width / 3, target.y - target.height / 3);
+      heading = yaw;
+      speed = 0;
+      move();
+      if (millis() - arcTimer > 6000 || ball.dist < 58)
+        break;
+    }
+  }
+}
+
+
 void setSpeed(byte port, short motor_speed) {
   if (motor_speed > 255)
     motor_speed = 255;
@@ -261,15 +310,14 @@ void move() {
   if (heading >= PI / 2)
     speed = 0;
   int u = heading * K_YAW;
+  //  setSpeed(MOTOR_A,  -speed * cos((dir + 0.785398163397448)) + u);
+  //  setSpeed(MOTOR_B,   speed * cos((dir - 0.785398163397448)) + u);
+  //  setSpeed(MOTOR_C,  -speed * cos((dir + 0.785398163397448)) - u);
+  //  setSpeed(MOTOR_D,  speed * cos((dir - 0.785398163397448)) - u);
   setSpeed(MOTOR_A,  -speed * cos((dir + 0.785398163397448)) + u);
   setSpeed(MOTOR_B,   speed * cos((dir - 0.785398163397448)) + u);
   setSpeed(MOTOR_C,  -speed * cos((dir + 0.785398163397448)) - u);
-  setSpeed(MOTOR_D,  speed * cos((dir - 0.785398163397448)) - u);
-}
-
-
-void setLED(byte port, bool state) {
-  digitalWrite(port, state);
+  setSpeed(MOTOR_D,  -speed * cos((dir - 0.785398163397448)) + u);
 }
 
 bool updateLights() {
@@ -369,18 +417,18 @@ void followBall() {
     }
 
     float ang = constrainAngle(ball.dir - yaw);
-    if (abs(ang) > 2.3 && ball.dist < 60)
+    if (abs(ang) > 2.2 && ball.dist < 57)
       dir = ang + PI / 2 * sign(ang);
 
-    if ((ball.x > 190 && ball.x < 197 && ball.y > 121 && ball.y < 140) || (millis() - ballCatched < 5)) {
+    if ((ball.x > 190 && ball.x < 200 && ball.y > 121 && ball.y < 140)) { // || (millis() - ballCatched < 5)
       dir = 0;
       speed = BOOST_SPEED;
-      ballCatched = millis();
-      if (millis() - kickTimer > 150) {
-        kick();
-      }
-    } else {
-      kickTimer = millis();
+      //      ballCatched = millis();
+      //      if (millis() - kickTimer > 150) {
+      //        kick();
+      //      }
+      //    } else {
+      //      kickTimer = millis();
     }
   } else {
     dir = PI;
@@ -388,6 +436,40 @@ void followBall() {
     speed = 300;
   }
 }
+
+void startMenu() {
+  heading = 0;
+  speed = 0;
+  move();
+  while (!buttonRight && !buttonLeft && !buttonCenter) checkButtons();
+
+  while (42) {
+    checkButtons();
+    if (buttonLeft) {
+      arc_start = 2;
+      break;
+    }
+
+    if (buttonRight) {
+      arc_start = 3;
+      break;
+    }
+
+    if (buttonCenter) {
+      arc_start = 1;
+      break;
+    }
+  }
+  setLED(CENTER_LED, HIGH);
+  delay(1000);
+  checkButtons();
+  while (!buttonCenter) checkButtons();
+  while (buttonCenter) checkButtons();
+  setLED(CENTER_LED, LOW);
+  arcTimer = millis();
+  arcStart();
+}
+
 
 void setup() {
   setLED(CENTER_LED, HIGH);
@@ -450,10 +532,10 @@ void setup() {
   devStatus = mpu.dmpInitialize();
 
   // supply your own gyro offsets here, scaled for min sensitivity
-  mpu.setXGyroOffset(199);
-  mpu.setYGyroOffset(-9);
-  mpu.setZGyroOffset(-8);
-  mpu.setZAccelOffset(3990); // 1688 factory default for my test chip
+  mpu.setXGyroOffset(GYRO_OFFSET_XG);
+  mpu.setYGyroOffset(GYRO_OFFSET_YG);
+  mpu.setZGyroOffset(GYRO_OFFSET_ZG);
+  mpu.setZAccelOffset(GYRO_OFFSET_ZA); // 1688 factory default for my test chip
 
   // make sure it worked (returns 0 if so)
   if (devStatus == 0) {
@@ -501,7 +583,7 @@ void loop() {
   ledCenter = false;
   lineFound = updateLights();
   if (lineFound) {
-    if (!checkTimer(line_t, 1000)) {
+    if (!checkTimer(line_t, 2000)) {
       if (lineState[1])
         lineSide = 1;
       if (lineState[2])
@@ -521,7 +603,7 @@ void loop() {
     lineCount++;
   }
 
-  if (!checkTimer(line_t, 3000)) {
+  if (!checkTimer(line_t, 1500)) {
     lineCount = 0;
   }
 
@@ -535,40 +617,75 @@ void loop() {
     //      heading = calcAngle(target.x + target.width / 3, target.y + target.height / 3);
     //    }
     //heading = calcAngle(target.x, target.y);
-    heading = calcAngle(target.x, target.y);
-    // heading = calcAngle(target.x + target.width / 3, target.y + target.height / 3);
+    //heading = calcAngle(target.x, target.y);
+    heading = calcAngle(target.x + target.width / 3, target.y + target.height / 3);
     // heading = calcAngle(target.x - target.width / 3, target.y - target.height / 3);
   }
 
   if (!lineFound) {
     followBall();
   } else {
-    if (homeFound) {
-      dir = home.dir;
-    } else if (targetFound && target.dist > 70) {
-      dir = target.dir;
-    } else {
-      dir = PI;
+    if (lineCount >= 3 && ballFound && targetFound && target.dist > 70) {
+      dir = ball.dir;
+      speed = 120;
       heading = yaw;
-      speed = 100;
+      if (lineSide == 0) {
+        if (lineState[3]) {
+          speed = 60;
+          dir = PI / 2;
+          heading = yaw;
+        }
+      }
+
+      if (lineSide == 3) {
+        if (lineState[0]) {
+          speed = 60;
+          dir = -PI / 2;
+          heading = yaw;
+        }
+      }
+
+      if ((ball.x > 190 && ball.x < 198 && ball.y > 121 && ball.y < 140)) {
+        heading = target.dir;
+        speed = 300;
+      }
+    } else {
+      if (homeFound) {
+        dir = home.dir;
+      } else if (targetFound && target.dist > 70) {
+        dir = target.dir;
+      } else {
+        dir = PI;
+        heading = yaw;
+        speed = 100;
+      }
     }
   }
 
-  //  if (lineCount >= 3) {
-  //    heading = yaw;
-  //    speed = 0;
-  //    ledCenter = HIGH;
-  //  }
-  if (homeFound && abs(home.dir) > 2 && abs(dir) > 2 && home.dist < 80) {
+  if (homeFound && abs(dir) > 2 && home.dist < 80 && !lineFound) {
     heading = yaw;
     speed = 0;
   }
-  // heading = calcAngle(target.x, target.y);
-  //  heading = calcAngle(target.x + target.width / 3, target.y + target.height / 3);
-  //heading = calcAngle(target.x - target.width / 3, target.y - target.height / 3);
-  // speed = 0;
+
+  if (homeFound && (home.dist < 70 || abs(home.dir) < 1.6)) {
+    speed = 200;
+    dir = 0;
+    heading = yaw;
+    ledCenter = true;
+  }
+  //
+  //  Serial.print(lineSide);
+  //  Serial.print(" ");
+  //  Serial.println(lineCount);
+  Serial.println(target.dir);
+  Serial.print(" ");
+  Serial.println(target.dist);
+
   move();
   setLED(LEFT_LED, ledLeft);
   setLED(RIGHT_LED, ledRight);
   setLED(CENTER_LED, ledCenter);
+  pr_lineFound = lineFound;
+  if (buttonLeft && buttonRight && buttonCenter)
+    startMenu();
 }

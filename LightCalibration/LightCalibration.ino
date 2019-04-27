@@ -6,7 +6,7 @@
 #define MOTOR_D 3 // cw
 #define L_STANDBY 4
 #define R_STANDBY 10
-#define K_YAW 200
+#define K_YAW 300
 
 int lights_min[4][4];
 int lights_max[4][4];

@@ -1,15 +1,19 @@
-#define BASIC_SPEED 300 // 0 - 360
+#define BASIC_SPEED 340 // 0 - 360
 #define BOOST_SPEED 340 // 0 - 360
 #define K_YAW 200 // heading coefficient
 
-#define ENEMY_GOAL 3  // 2 - yellow, 3 - blue
+#define ENEMY_GOAL 2   // 2 - yellow, 3 - blue
 
-#define WHITE_LINE 250
+#define WHITE_LINE 300
 
-#define CAM_CENTER_X 154
-#define CAM_CENTER_Y 132
+#define CAM_CENTER_X 155
+#define CAM_CENTER_Y 123
 
 #define GYRO_CALIB_TIME 5000
+#define GYRO_OFFSET_XG 199
+#define GYRO_OFFSET_YG -9
+#define GYRO_OFFSET_ZG -8
+#define GYRO_OFFSET_ZA 3990
 
 #define MOTOR_A 0 // cw
 #define MOTOR_B 1 // cw
